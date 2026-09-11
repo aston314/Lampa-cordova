@@ -1,0 +1,200 @@
+name: Auto Build Lampa APK
+
+on:
+  schedule:
+    # 每天 UTC 02:00（北京时间 10:00）自动检测一次上游仓库
+    - cron: '0 2 * * *'
+  workflow_dispatch: # 支持在 GitHub 网页上手动点击按钮立即触发
+
+# 赋予自动更新仓库文件和创建 Release 的写权限
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出当前仓库
+      - name: Checkout Current Repo
+        uses: actions/checkout@v4
+
+      # 2. 监测上游 yumata/lampa 仓库是否有新 Commit
+      - name: Check Upstream Changes
+        id: check_upstream
+        run: |
+          LATEST_SHA=$(curl -s "https://api.github.com/repos/yumata/lampa/commits/main" | jq -r '.sha')
+          echo "Upstream latest commit: $LATEST_SHA"
+
+          LAST_SHA=""
+          if [ -f .last_commit ]; then
+            LAST_SHA=$(cat .last_commit)
+          fi
+          echo "Previous recorded commit: $LAST_SHA"
+
+          # 如果 Commit 没变，且不是手动点击运行，则跳过后续步骤
+          if [ "$LATEST_SHA" == "$LAST_SHA" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "Upstream has not changed. Skipping build."
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "latest_sha=$LATEST_SHA" >> $GITHUB_OUTPUT
+            echo "short_sha=${LATEST_SHA:0:7}" >> $GITHUB_OUTPUT
+          fi
+
+      # 3. 拉取最新 lampa 源码到临时目录 upstream_code
+      - name: Clone Upstream Lampa Code
+        if: steps.check_upstream.outputs.should_run == 'true'
+        run: |
+          git clone --depth 1 https://github.com/yumata/lampa.git upstream_code
+
+      # 4. 执行 Python 脚本完成注入与方法替换
+      - name: Patch Lampa Code
+        if: steps.check_upstream.outputs.should_run == 'true'
+        run: |
+          python3 scripts/patch.py
+
+      # 5. 配置构建环境 (Node 18 + Java 11 + Android SDK API 29)
+      - name: Setup Node.js
+        if: steps.check_upstream.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup Java 11 JDK
+        if: steps.check_upstream.outputs.should_run == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Setup Android SDK API 29
+        if: steps.check_upstream.outputs.should_run == 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 29
+          build-tools: 29.0.3
+
+      # 6. 初始化 Cordova 工程、读取配置、递增版本号、还原证书并打包
+      - name: Setup Cordova & Build Signed Release APK
+        if: steps.check_upstream.outputs.should_run == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          # 全局安装 Cordova
+          npm install -g cordova
+
+          # 创建工程 (包名已改为 org.aston.lampa)
+          cordova create lampa_app org.aston.lampa Lampa
+          cd lampa_app
+
+          # 如果仓库根目录下有你的自定义 config.xml，覆盖默认生成的
+          if [ -f "../config.xml" ]; then
+            cp ../config.xml config.xml
+            echo "Successfully loaded custom config.xml from root."
+          fi
+
+          # ========== 自动注入版本号（支持手机/电视无缝覆盖更新） ==========
+          VERSION_CODE="${{ github.run_number }}"
+          VERSION_NAME="1.0.${{ github.run_number }}"
+
+          # 替换 config.xml 中的版本参数
+          sed -i "s/version=\"[^\"]*\"/version=\"$VERSION_NAME\" android-versionCode=\"$VERSION_CODE\"/g" config.xml
+          echo "App version set to: $VERSION_NAME (versionCode: $VERSION_CODE)"
+          # ===============================================================
+
+          # 清空默认模板网页，拷入处理好的源码
+          rm -rf www/*
+          cp -r ../upstream_code/* www/
+
+          # 如果你有图标/启动图资源文件夹 res，拷入工程
+          if [ -d "../res" ]; then
+            mkdir -p res
+            cp -r ../res/* res/ || true
+          fi
+
+          # 安装指定的 7 个核心插件
+          cordova plugin add com-darryncampbell-cordova-plugin-intent@2.2.0
+          cordova plugin add cordova-plugin-fetch@0.1.0
+          cordova plugin add cordova-plugin-file@7.0.0
+          cordova plugin add cordova-plugin-http@1.2.0
+          cordova plugin add cordova-plugin-splashscreen@6.0.2
+          cordova plugin add cordova-plugin-inappbrowser@5.0.0
+          cordova plugin add cordova-plugin-statusbar@3.0.0
+
+          # 启用 AndroidX 依赖兼容（解决旧版 http 插件报错）
+          cordova plugin add cordova-plugin-androidx-adapter || true
+
+          # 添加匹配 API 29 和 Java 11 的平台版本
+          cordova platform add android@9.1.0
+
+          # 从 Secret 还原你的 aston.keystore 文件
+          echo "$KEYSTORE_BASE64" | base64 --decode > aston.keystore
+
+          # 动态写入你的签名配置 build.json
+          cat <<EOF > build.json
+          {
+            "android": {
+              "debug": {
+                "keystore": "aston.keystore",
+                "storePassword": "$KEYSTORE_PASSWORD",
+                "alias": "$KEY_ALIAS",
+                "password": "$KEY_PASSWORD",
+                "keystoreType": "jks"
+              },
+              "release": {
+                "keystore": "aston.keystore",
+                "storePassword": "$KEYSTORE_PASSWORD",
+                "alias": "$KEY_ALIAS",
+                "password": "$KEY_PASSWORD",
+                "keystoreType": "jks"
+              }
+            }
+          }
+          EOF
+
+          # 构建已签名的 Release APK
+          cordova build android --release --buildConfig=build.json
+
+          # 重命名生成的 APK，带有版本号和短 Commit SHA
+          mv platforms/android/app/build/outputs/apk/release/app-release.apk platforms/android/app/build/outputs/apk/release/lampa-v${VERSION_NAME}-${{ steps.check_upstream.outputs.short_sha }}.apk
+
+      # 7. 上传到 Actions Artifacts（备份下载）
+      - name: Upload Artifact
+        if: steps.check_upstream.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lampa-v1.0.${{ github.run_number }}-${{ steps.check_upstream.outputs.short_sha }}
+          path: lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
+
+      # 8. 自动发布到 GitHub Releases（手机/电视直接点击 .apk 链接即可下载安装）
+      - name: Create GitHub Release
+        if: steps.check_upstream.outputs.should_run == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Lampa v1.0.${{ github.run_number }} (${{ steps.check_upstream.outputs.short_sha }})
+          body: |
+            ### Lampa 自动构建完成
+            - **包名**：`org.aston.lampa`
+            - **应用版本**：`1.0.${{ github.run_number }}` (versionCode: `${{ github.run_number }}`)
+            - **上游 Commit**：[${{ steps.check_upstream.outputs.latest_sha }}](https://github.com/yumata/lampa/commit/${{ steps.check_upstream.outputs.latest_sha }})
+            - **状态**：已签名 Release 版本，支持覆盖升级安装。
+          files: |
+            lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 9. 记录最新的 Commit Hash，防止重复构建
+      - name: Update Last Commit Record
+        if: steps.check_upstream.outputs.should_run == 'true'
+        run: |
+          echo "${{ steps.check_upstream.outputs.latest_sha }}" > .last_commit
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .last_commit
+          git commit -m "chore: sync upstream to ${{ steps.check_upstream.outputs.short_sha }} (v1.0.${{ github.run_number }}) [skip ci]" || true
+          git push
