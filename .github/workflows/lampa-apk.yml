@@ -75,7 +75,7 @@ jobs:
           api-level: 29
           build-tools: 29.0.3
 
-      # 6. 初始化 Cordova 工程、读取配置、递增版本号、还原证书并打包
+      # 6. 初始化 Cordova 工程、读取 config.xml 版本、自增 versionCode、还原证书并打包
       - name: Setup Cordova & Build Signed Release APK
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
@@ -87,23 +87,33 @@ jobs:
           # 全局安装 Cordova
           npm install -g cordova
 
-          # 创建工程 (包名已改为 org.aston.lampa)
+          # 创建工程 (包名: org.aston.lampa)
           cordova create lampa_app org.aston.lampa Lampa
           cd lampa_app
 
           # 如果仓库根目录下有你的自定义 config.xml，覆盖默认生成的
           if [ -f "../config.xml" ]; then
             cp ../config.xml config.xml
-            echo "Successfully loaded custom config.xml from root."
+            echo "Successfully loaded custom config.xml from repository root."
           fi
 
-          # ========== 自动注入版本号（支持手机/电视无缝覆盖更新） ==========
-          VERSION_CODE="${{ github.run_number }}"
-          VERSION_NAME="1.0.${{ github.run_number }}"
+          # ========== 自动同步 config.xml 版本号与 versionCode ==========
+          # 1. 自动提取 config.xml 中设定的版本号（如 1.3.3）
+          APP_VERSION=$(sed -n 's/.*<widget[^>]*version="\([^"]*\)".*/\1/p' config.xml | head -n 1)
+          if [ -z "$APP_VERSION" ]; then APP_VERSION="1.3.3"; fi
 
-          # 替换 config.xml 中的版本参数
-          sed -i "s/version=\"[^\"]*\"/version=\"$VERSION_NAME\" android-versionCode=\"$VERSION_CODE\"/g" config.xml
-          echo "App version set to: $VERSION_NAME (versionCode: $VERSION_CODE)"
+          # 2. 内部版本号 versionCode（每次构建自增纯数字，支持覆盖安装）
+          VERSION_CODE="${{ github.run_number }}"
+
+          # 3. 动态将自增的 android-versionCode 注入到 config.xml，保留原有的 version 属性
+          if grep -q "android-versionCode=" config.xml; then
+            sed -i "s/android-versionCode=\"[^\"]*\"/android-versionCode=\"$VERSION_CODE\"/g" config.xml
+          else
+            sed -i "s/<widget /<widget android-versionCode=\"$VERSION_CODE\" /g" config.xml
+          fi
+
+          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
+          echo "Synchronized version: $APP_VERSION (versionCode: $VERSION_CODE)"
           # ===============================================================
 
           # 清空默认模板网页，拷入处理好的源码
@@ -159,30 +169,31 @@ jobs:
           # 构建已签名的 Release APK
           cordova build android --release --buildConfig=build.json
 
-          # 重命名生成的 APK，带有版本号和短 Commit SHA
-          mv platforms/android/app/build/outputs/apk/release/app-release.apk platforms/android/app/build/outputs/apk/release/lampa-v${VERSION_NAME}-${{ steps.check_upstream.outputs.short_sha }}.apk
+          # 将生成的 APK 重命名为带版本号的名称，例如：lampa-v1.3.3-b1-a1b2c3d.apk
+          mv platforms/android/app/build/outputs/apk/release/app-release.apk platforms/android/app/build/outputs/apk/release/lampa-v${APP_VERSION}-b${{ github.run_number }}-${{ steps.check_upstream.outputs.short_sha }}.apk
 
-      # 7. 上传到 Actions Artifacts（备份下载）
+      # 7. 上传到 Actions Artifacts（压缩包备份下载）
       - name: Upload Artifact
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: lampa-v1.0.${{ github.run_number }}-${{ steps.check_upstream.outputs.short_sha }}
+          name: lampa-v${{ env.APP_VERSION }}-b${{ github.run_number }}-${{ steps.check_upstream.outputs.short_sha }}
           path: lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
 
-      # 8. 自动发布到 GitHub Releases（手机/电视直接点击 .apk 链接即可下载安装）
+      # 8. 自动发布到 GitHub Releases（版本号与 config.xml 完全同步，免解压直链下载）
       - name: Create GitHub Release
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Lampa v1.0.${{ github.run_number }} (${{ steps.check_upstream.outputs.short_sha }})
+          tag_name: v${{ env.APP_VERSION }}-b${{ github.run_number }}
+          name: Lampa v${{ env.APP_VERSION }} (Build ${{ github.run_number }})
           body: |
             ### Lampa 自动构建完成
             - **包名**：`org.aston.lampa`
-            - **应用版本**：`1.0.${{ github.run_number }}` (versionCode: `${{ github.run_number }}`)
+            - **应用版本**：`v${{ env.APP_VERSION }}`
+            - **构建编号**：`Build ${{ github.run_number }}` (versionCode: `${{ github.run_number }}`)
             - **上游 Commit**：[${{ steps.check_upstream.outputs.latest_sha }}](https://github.com/yumata/lampa/commit/${{ steps.check_upstream.outputs.latest_sha }})
-            - **状态**：已签名 Release 版本，支持覆盖升级安装。
+            - **状态**：已签名 Release 版本，支持覆盖安装升级。
           files: |
             lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
         env:
@@ -196,5 +207,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .last_commit
-          git commit -m "chore: sync upstream to ${{ steps.check_upstream.outputs.short_sha }} (v1.0.${{ github.run_number }}) [skip ci]" || true
+          git commit -m "chore: sync upstream to ${{ steps.check_upstream.outputs.short_sha }} (v${{ env.APP_VERSION }}-b${{ github.run_number }}) [skip ci]" || true
           git push
