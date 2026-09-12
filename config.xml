@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<widget id="org.aston.lampa" version="3.3.3" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+<widget id="org.aston.lampa" version="3.3.3" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
     <name>Lampa</name>
     <description>
         一个TMDB android TV 客户端，可以查看热门影片及电视剧、搜索种子并进行在线观看。
@@ -18,51 +18,36 @@
     <allow-intent href="magnet:*" />
     <platform name="android">
         <allow-intent href="market:*" />
+        
+        <!-- 最低支持 Android 5.0 (API 21)，保证 Android 6 电视盒子顺利安装 -->
+        <preference name="android-minSdkVersion" value="21" />
+        <preference name="android-targetSdkVersion" value="29" />
+
         <!-- 让程序判断是不是android平台 -->
         <preference name="OverrideUserAgent" value="lampa_client (Dalvik)" />
+        
         <!-- 回退到使用文件而不是https://localhost 不然插件不能正常工作 -->
         <preference name="AndroidInsecureFileModeEnabled" value="true" />
         <preference name="AndroidPersistentFileLocation" value="Compatibility" />
         <preference name="Fullscreen" value="true" />
+        
         <icon density="mdpi" src="res/icons/android/mipmap-mdpi/ic_launcher.png" />
         <icon density="hdpi" src="res/icons/android/mipmap-hdpi/ic_launcher.png" />
         <icon density="xhdpi" src="res/icons/android/mipmap-xhdpi/ic_launcher.png" />
         <icon density="xxhdpi" src="res/icons/android/mipmap-xxhdpi/ic_launcher.png" />
         <icon density="xxxhdpi" src="res/icons/android/mipmap-xxxhdpi/ic_launcher.png" />
-        <!-- below requires the splash screen plugin -->
-        <!-- docs: https://github.com/apache/cordova-plugin-splashscreen -->
-        <preference name = "SplashScreen" value = "screnn" />
-        <preference name = "SplashScreenDelay" value = "1000" />
+        
+        <!-- 开屏闪屏配置 -->
+        <preference name="SplashScreen" value="screen" />
+        <preference name="SplashScreenDelay" value="1000" />
         <preference name="FadeSplashScreen" value="false" />
-        <!-- <preference name="SplashMaintainAspectRatio" value="true" /> -->
         <preference name="ShowSplashScreenSpinner" value="false" />
-        <!-- <preference name="SplashScreenSpinnerColor" value="white" />
-        <preference name="TopActivityIndicator" value="white"/> -->
         <preference name="AutoHideSplashScreen" value="false" />
-        <!-- 是否使用淡入淡出效果 -->
-        <preference name="FadeSplashScreen" value="false"/>
 
-        <!-- 淡入淡出执行的毫秒数 默认是500ms -->
-        <!-- <preference name="FadeSplashScreenDuration" value="2000"/> -->
-        <!--<edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application/activity[@android:name='MainActivity']">
-            <activity android:theme="@style/WelcomeStyle" />
-        </edit-config>-->
-        <!-- <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application/activity">
-            <activity android:theme="@style/WelcomeStyle" />
-        </edit-config> -->
-        <preference name="StatusBarBackgroundColor" value="" />
-        <!-- Cordova-Android 11 -->
-        <!-- <preference name="AndroidXEnabled" value="true" />
-        <preference name="android-targetSdkVersion" value="32" /> -->
-        <!-- <preference name="AndroidWindowSplashScreenAnimatedIcon" value="resources/splashTemplate.png" />
-        <preference name="AndroidWindowSplashScreenBackground" value="#000000" /> -->
         <!-- 强制开启硬件加速，让 GPU 分担海报墙渲染压力，减少 CPU 占用 -->
         <preference name="android-hardwareAccelerated" value="true" />
+        
         <!-- 允许 WebView 访问应用私有文件，避免多余的跨域读写缓存 -->
         <preference name="AllowUntrustedCerts" value="true" />
-        <!-- 允许加载所有 http:// 明文海报与背景图 -->
-        <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
-            <application android:usesCleartextTraffic="true" />
-        </edit-config>
     </platform>
 </widget>
