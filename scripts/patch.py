@@ -45,7 +45,48 @@ else:
     sys.exit(1)
 
 
-# ================= 2. 定义大段代码模板 =================
+# ================= 2. 自动遍历并批量内嵌所有语言包 =================
+lang_dir = os.path.join(UPSTREAM_DIR, "lang")
+all_embedded_langs = {}
+
+if os.path.exists(lang_dir):
+    for filename in sorted(os.listdir(lang_dir)):
+        # 扫描所有 .js 文件，排除 meta.js
+        if filename.endswith(".js") and filename != "meta.js":
+            lang_code = filename[:-3] # 提取如 zh, uk, be, fr
+            filepath = os.path.join(lang_dir, filename)
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    raw_content = f.read()
+                
+                # 剔除开头的 export default，转换为合法的 JS 对象字面量
+                clean_obj = re.sub(r"^\s*export\s+default\s*", "", raw_content).strip()
+                if clean_obj.endswith(";"):
+                    clean_obj = clean_obj[:-1]
+                
+                all_embedded_langs[lang_code] = clean_obj
+                print(f"[Success] 发现并成功解析语言包: {filename} -> 代码: {lang_code}")
+            except Exception as e:
+                print(f"[Warning] 解析语言包 {filename} 失败: {e}")
+
+# 拼接所有语言为一个全局字典对象: { "zh": {...}, "uk": {...}, ... }
+lang_entries = []
+for code, obj_str in all_embedded_langs.items():
+    lang_entries.append(f'"{code}": {obj_str}')
+
+embedded_langs_js = "{\n" + ",\n".join(lang_entries) + "\n}"
+
+# 构造替换 loadLang 的全语言内置逻辑
+ALL_LANG_EMBEDDED_CODE = (
+    "var embedded_langs = " + embedded_langs_js + ";\n"
+    "    if (embedded_langs[code]) {\n"
+    "      Lang.AddTranslation(code, embedded_langs[code]);\n"
+    "      loadTask();\n"
+    "    } else if (['ru', 'en'].indexOf(code) >= 0) loadTask();"
+)
+
+
+# ================= 3. 定义大段代码模板 =================
 
 # 模板 1: Cordova 网络请求实现
 CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
@@ -338,38 +379,10 @@ VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         } else {
             versionCode = 28;
         };"""
-# 模板 7: 替换语言包加载逻辑：直接加载 APK 内置的本地语言包，免联网、秒开、无跨域拦截
-PATCH_LOCAL_LANG_CODE = r"""function loadLang() {
-    var code = window.localStorage.getItem('language') || 'ru';
-    LoadingProgress.step(1);
-    if (['ru', 'en'].indexOf(code) >= 0) {
-        loadTask();
-    } else {
-        LoadingProgress.status('Loading language');
-        var script = document.createElement('script');
-        script.type = 'text/javascript';
-        // 直接读取 APK 本地自带的 lang/ 语言文件，即使断网也能秒加载！
-        script.src = './lang/' + code + '.js';
-        script.onload = function() {
-            loadTask();
-        };
-        script.onerror = function() {
-            // 如果本地真没有该语言，再走 fallback
-            console.log('Failed to load local language:', code);
-            loadTask();
-        };
-        document.body.appendChild(script);
-    }
-}"""
 
 
-# ================= 3. 严格替换规则列表（共 19 项） =================
+# ================= 4. 严格替换规则列表 =================
 STRICT_RULES = [
-    {
-        "name": "允许在 Cordova 下激活 AndroidJS 平台逻辑分支",
-        "pattern": r"if\s*\(\s*typeof AndroidJS !== 'undefined'\s*\)",
-        "new": "if (typeof AndroidJS !== 'undefined' || !!window.cordova)"
-    },
     {
         "name": "退出代码替换 Android.exit()",
         "pattern": r"Android\.exit\(\)",
@@ -446,6 +459,11 @@ STRICT_RULES = [
         "new": "poster: SERVER.object.poster,\n        media: SERVER.movie.name ? 'tv' : 'movie',\n        action: \"play\",\n        data: {"
     },
     {
+        "name": "允许在 Cordova 下激活 AndroidJS 平台逻辑分支",
+        "pattern": r"if\s*\(\s*typeof AndroidJS !== 'undefined'\s*\)",
+        "new": "if (typeof AndroidJS !== 'undefined' || !!window.cordova)"
+    },
+    {
         "name": "修复 AndroidJS.appVersion 崩溃并设置 versionCode=28 兜底",
         "pattern": r"var\s+current\s*=\s*AndroidJS\.appVersion\(\)\.split\('-'\);[\s\S]*?var\s+versionCode\s*=\s*current\.pop\(\);",
         "new": VERSION_CODE_FALLBACK_CODE
@@ -466,9 +484,9 @@ STRICT_RULES = [
         "new": "typeof AndroidJS !== 'undefined' && typeof AndroidJS.saveBookmarks !== 'undefined'"
     },
     {
-        "name": "优化 loadLang 为本地直接读取（免翻墙、免联网、秒开语言包）",
-        "pattern": r"function\s+loadLang\(\)\s*\{[\s\S]*?error:\s*loadTask\s*\}\);\s*\}\s*\}",
-        "new": PATCH_LOCAL_LANG_CODE
+        "name": "全语言包自动内嵌（全语言离线支持、0秒切换、彻底告别语法错误）",
+        "pattern": r"if\s*\(\s*\['ru',\s*'en'\]\.indexOf\(code\)\s*>=\s*0\s*\)\s*loadTask\(\);",
+        "new": ALL_LANG_EMBEDDED_CODE
     }
 ]
 
@@ -496,7 +514,8 @@ for rule in STRICT_RULES:
     total_replaced = 0
     
     for file_path, content in file_data.items():
-        new_content, count = re.subn(pattern, new_text, content)
+        # 使用 lambda 避免替换内容中的特殊字符影响正则解析
+        new_content, count = re.subn(pattern, lambda m: new_text, content)
         if count > 0:
             file_data[file_path] = new_content
             total_replaced += count
@@ -520,4 +539,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 19 条规则校验 100% 通过，文件已安全写回！准许打包 APK。\n")
+print("[Success] 所有规则校验 100% 通过，全语言包已完美内嵌！准许打包 APK。\n")
