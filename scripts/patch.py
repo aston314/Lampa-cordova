@@ -464,7 +464,7 @@ STRICT_RULES = [
         "name": "修复 updateChannels 中 AndroidJS.saveBookmarks 语法崩溃",
         "pattern": r"typeof\s+AndroidJS\.saveBookmarks\s*!==\s*['\"]undefined['\"]",
         "new": "typeof AndroidJS !== 'undefined' && typeof AndroidJS.saveBookmarks !== 'undefined'"
-    }
+    },
     {
         "name": "优化 loadLang 为本地直接读取（免翻墙、免联网、秒开语言包）",
         "pattern": r"function\s+loadLang\(\)\s*\{[\s\S]*?error:\s*loadTask\s*\}\);\s*\}\s*\}",
