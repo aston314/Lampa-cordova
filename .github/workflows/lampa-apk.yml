@@ -46,9 +46,11 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/yumata/lampa.git upstream_code
 
-      # 4. 执行 Python 脚本完成注入与方法替换
+      # 4. 执行 Python 脚本完成注入与方法替换（传入 NTFY_TOPIC）
       - name: Patch Lampa Code
         if: steps.check_upstream.outputs.should_run == 'true'
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: |
           python3 scripts/patch.py
 
