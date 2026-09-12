@@ -338,6 +338,29 @@ VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         } else {
             versionCode = 28;
         };"""
+# 模板 7: 替换语言包加载逻辑：直接加载 APK 内置的本地语言包，免联网、秒开、无跨域拦截
+PATCH_LOCAL_LANG_CODE = r"""function loadLang() {
+    var code = window.localStorage.getItem('language') || 'ru';
+    LoadingProgress.step(1);
+    if (['ru', 'en'].indexOf(code) >= 0) {
+        loadTask();
+    } else {
+        LoadingProgress.status('Loading language');
+        var script = document.createElement('script');
+        script.type = 'text/javascript';
+        // 直接读取 APK 本地自带的 lang/ 语言文件，即使断网也能秒加载！
+        script.src = './lang/' + code + '.js';
+        script.onload = function() {
+            loadTask();
+        };
+        script.onerror = function() {
+            // 如果本地真没有该语言，再走 fallback
+            console.log('Failed to load local language:', code);
+            loadTask();
+        };
+        document.body.appendChild(script);
+    }
+}"""
 
 
 # ================= 3. 严格替换规则列表（共 19 项） =================
@@ -441,6 +464,11 @@ STRICT_RULES = [
         "name": "修复 updateChannels 中 AndroidJS.saveBookmarks 语法崩溃",
         "pattern": r"typeof\s+AndroidJS\.saveBookmarks\s*!==\s*['\"]undefined['\"]",
         "new": "typeof AndroidJS !== 'undefined' && typeof AndroidJS.saveBookmarks !== 'undefined'"
+    }
+    {
+        "name": "优化 loadLang 为本地直接读取（免翻墙、免联网、秒开语言包）",
+        "pattern": r"function\s+loadLang\(\)\s*\{[\s\S]*?error:\s*loadTask\s*\}\);\s*\}\s*\}",
+        "new": PATCH_LOCAL_LANG_CODE
     }
 ]
 
