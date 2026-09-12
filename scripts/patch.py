@@ -40,7 +40,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (Cordova + 闪屏 + 遥控器全语言菜单) =================
+# ================= 1. 注入 index.html (Cordova + 闪屏 + 遥控器设置键全语言菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -51,12 +51,11 @@ if not os.path.exists(html_file):
 with open(html_file, "r", encoding="utf-8") as f:
     html_content = f.read()
 
-# 包含 Cordova 通信、启动图关闭，以及支持 DOM 键盘捕获 + 12 种全语言菜单
 cordova_init_code = r"""
 <script src="cordova.js"></script>
 <script>
     (function () {
-        // 弹出快捷菜单的核心函数
+        // 弹出快捷操作菜单
         function triggerAstonQuickMenu() {
             // 如果正在使用内置播放器播放视频，不打扰观影
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
@@ -125,27 +124,17 @@ cordova_init_code = r"""
             }
         }
 
-        // 探针测试：捕获遥控器按下的任何按键并在屏幕打印
+        // 监听遥控器按键：code === 0（你的遥控器设置键）以及标准 82 / 93
         window.addEventListener('keydown', function (e) {
             var code = e.keyCode || e.which;
-            
-            // 在屏幕左上角弹出半透明黑色提示框
-            var tip = document.getElementById('debug_key_tip');
-            if (!tip) {
-                tip = document.createElement('div');
-                tip.id = 'debug_key_tip';
-                tip.style.cssText = 'position:fixed;top:20px;left:20px;background:rgba(255,0,0,0.9);color:#fff;padding:15px 25px;font-size:24px;z-index:9999999;border-radius:8px;font-weight:bold;';
-                document.body.appendChild(tip);
-            }
-            tip.innerText = '按键信号: KeyCode = ' + code + ' | Key = ' + e.key;
-
-            // 如果按到了 82 或 93，触发菜单
-            if (code === 82 || code === 93) {
+            if (code === 0 || code === 82 || code === 93) {
+                e.preventDefault();
+                e.stopPropagation();
                 triggerAstonQuickMenu();
             }
         }, true);
 
-        // 通道 2：Cordova 原生 menubutton 事件双保险
+        // Cordova 初始化
         document.addEventListener('deviceready', function () {
             if (document.readyState === 'complete') {
                 if (navigator.splashscreen) navigator.splashscreen.hide();
@@ -167,7 +156,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", f"<head>\n{cordova_init_code}", 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入 Cordova 初始化、遥控器多语言菜单与启动脚本")
+    print("[Success] index.html 成功注入 Cordova 初始化、遥控器设置键菜单与启动脚本")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -664,4 +653,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 22 条规则校验 100% 通过，全语言遥控器菜单与功能补丁就绪！准许打包 APK。\n")
+print("[Success] 所有 22 条规则校验 100% 通过，遥控器专属按键菜单就绪！准许打包 APK。\n")
