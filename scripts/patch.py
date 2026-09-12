@@ -436,6 +436,11 @@ STRICT_RULES = [
         "name": "Cordova HTTP/Fetch 网络请求引擎大段注入",
         "pattern": r"Android\.httpReq\(\s*params\s*,\s*\{\s*complite\s*:\s*secuses\s*,\s*error\s*:\s*error\s*\}\s*\);",
         "new": CORDOVA_HTTP_REQ_CODE
+    },
+    {
+        "name": "修复 updateChannels 中 AndroidJS.saveBookmarks 语法崩溃",
+        "pattern": r"typeof\s+AndroidJS\.saveBookmarks\s*!==\s*['\"]undefined['\"]",
+        "new": "typeof AndroidJS !== 'undefined' && typeof AndroidJS.saveBookmarks !== 'undefined'"
     }
 ]
 
