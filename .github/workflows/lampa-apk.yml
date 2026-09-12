@@ -6,7 +6,6 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch: # 支持在 GitHub 网页上手动点击按钮立即触发
 
-# 赋予自动更新仓库文件和创建 Release 的写权限
 permissions:
   contents: write
 
@@ -32,7 +31,6 @@ jobs:
           fi
           echo "Previous recorded commit: $LAST_SHA"
 
-          # 如果 Commit 没变，且不是手动点击运行，则跳过后续步骤
           if [ "$LATEST_SHA" == "$LAST_SHA" ] && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
             echo "should_run=false" >> $GITHUB_OUTPUT
             echo "Upstream has not changed. Skipping build."
@@ -54,7 +52,7 @@ jobs:
         run: |
           python3 scripts/patch.py
 
-      # 5. 配置构建环境 (Node 18 + Java 11 + 系统原生 Android SDK)
+      # 5. 配置构建环境 (Node 18 + Java 11 + Gradle 7.4.2 + Android SDK)
       - name: Setup Node.js
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: actions/setup-node@v4
@@ -68,7 +66,15 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 配置系统自带的 Android SDK 环境变量
+      # 安装适配 Java 11 的 Gradle 7.4.2，替换系统高版本 Gradle 9.x
+      - name: Setup Gradle 7.4.2 for Java 11
+        if: steps.check_upstream.outputs.should_run == 'true'
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-7.4.2-bin.zip
+          sudo unzip -q -d /opt gradle-7.4.2-bin.zip
+          echo "/opt/gradle-7.4.2/bin" >> $GITHUB_PATH
+
+      # 配置系统自带的 Android SDK
       - name: Setup Android SDK Environment
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
@@ -82,37 +88,35 @@ jobs:
           yes | sdkmanager --licenses || true
           yes | sdkmanager "platforms;android-29" "platforms;android-30" "build-tools;29.0.3" "build-tools;30.0.3" || true
 
-      # 6. 初始化 Cordova 工程、读取 config.xml 版本、自增 versionCode、还原证书并打包
+      # 6. 初始化 Cordova 工程、安装插件、还原证书并打包
       - name: Setup Cordova & Build Signed Release APK
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          # 如果 Secrets 未配置，自动使用你的真实参数作为兜底，确保签名顺利
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || '197346' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'ASTON' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || '197346' }}
         run: |
           # 全局安装 Cordova
           npm install -g cordova
 
-          # 创建工程 (包名: org.aston.lampa)
+          # 创建工程
           cordova create lampa_app org.aston.lampa Lampa
           cd lampa_app
 
-          # 如果仓库根目录下有你的自定义 config.xml，覆盖默认生成的
+          # 如果仓库根目录下有你的自定义 config.xml，覆盖默认配置
           if [ -f "../config.xml" ]; then
             cp ../config.xml config.xml
             echo "Successfully loaded custom config.xml from repository root."
           fi
 
           # ========== 自动同步 config.xml 版本号与 versionCode ==========
-          # 1. 自动提取 config.xml 中设定的版本号（如 1.3.3）
           APP_VERSION=$(sed -n 's/.*<widget[^>]*version="\([^"]*\)".*/\1/p' config.xml | head -n 1)
           if [ -z "$APP_VERSION" ]; then APP_VERSION="1.3.3"; fi
 
-          # 2. 内部版本号 versionCode（每次构建自增纯数字，支持覆盖安装）
           VERSION_CODE="${{ github.run_number }}"
 
-          # 3. 动态将自增的 android-versionCode 注入到 config.xml，保留原有的 version 属性
           if grep -q "android-versionCode=" config.xml; then
             sed -i "s/android-versionCode=\"[^\"]*\"/android-versionCode=\"$VERSION_CODE\"/g" config.xml
           else
@@ -127,13 +131,13 @@ jobs:
           rm -rf www/*
           cp -r ../upstream_code/* www/
 
-          # 如果你有图标/启动图资源文件夹 res，拷入工程
+          # 拷入 res 图标资源
           if [ -d "../res" ]; then
             mkdir -p res
             cp -r ../res/* res/ || true
           fi
 
-          # 安装指定的 7 个核心插件
+          # 安装 7 个指定插件
           cordova plugin add com-darryncampbell-cordova-plugin-intent@2.2.0
           cordova plugin add https://github.com/aporat/cordova-plugin-fetch.git
           cordova plugin add cordova-plugin-file@7.0.0
@@ -141,11 +145,9 @@ jobs:
           cordova plugin add cordova-plugin-splashscreen@6.0.2
           cordova plugin add cordova-plugin-inappbrowser@5.0.0
           cordova plugin add cordova-plugin-statusbar@3.0.0
-
-          # 启用 AndroidX 依赖兼容
           cordova plugin add cordova-plugin-androidx-adapter || true
 
-          # 添加匹配 API 29 和 Java 11 的平台版本
+          # 添加匹配 Java 11 的平台版本 10.1.2
           cordova platform add android@10.1.2
 
           # 从 Secret 还原你的 aston.keystore 文件
@@ -176,10 +178,10 @@ jobs:
           # 构建已签名的 Release APK
           cordova build android --release --buildConfig=build.json
 
-          # 将生成的 APK 重命名为带版本号的名称，例如：lampa-v1.3.3-b1-a1b2c3d.apk
+          # 将生成的 APK 重命名
           mv platforms/android/app/build/outputs/apk/release/app-release.apk platforms/android/app/build/outputs/apk/release/lampa-v${APP_VERSION}-b${{ github.run_number }}-${{ steps.check_upstream.outputs.short_sha }}.apk
 
-      # 7. 上传到 Actions Artifacts（压缩包备份下载）
+      # 7. 上传到 Actions Artifacts
       - name: Upload Artifact
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: actions/upload-artifact@v4
@@ -187,7 +189,7 @@ jobs:
           name: lampa-v${{ env.APP_VERSION }}-b${{ github.run_number }}-${{ steps.check_upstream.outputs.short_sha }}
           path: lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
 
-      # 8. 自动发布到 GitHub Releases（版本号与 config.xml 完全同步，免解压直链下载）
+      # 8. 自动发布到 GitHub Releases（直链下载）
       - name: Create GitHub Release
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: softprops/action-gh-release@v2
@@ -200,13 +202,13 @@ jobs:
             - **应用版本**：`v${{ env.APP_VERSION }}`
             - **构建编号**：`Build ${{ github.run_number }}` (versionCode: `${{ github.run_number }}`)
             - **上游 Commit**：[${{ steps.check_upstream.outputs.latest_sha }}](https://github.com/yumata/lampa/commit/${{ steps.check_upstream.outputs.latest_sha }})
-            - **状态**：已签名 Release 版本，支持覆盖安装升级。
+            - **状态**：已签名 Release 版本，支持覆盖安装。
           files: |
             lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. 记录最新的 Commit Hash，防止重复构建
+      # 9. 记录最新的 Commit Hash
       - name: Update Last Commit Record
         if: steps.check_upstream.outputs.should_run == 'true'
         run: |
