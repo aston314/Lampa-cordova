@@ -56,5 +56,13 @@
         <preference name="android-targetSdkVersion" value="32" /> -->
         <!-- <preference name="AndroidWindowSplashScreenAnimatedIcon" value="resources/splashTemplate.png" />
         <preference name="AndroidWindowSplashScreenBackground" value="#000000" /> -->
+        <!-- 强制开启硬件加速，让 GPU 分担海报墙渲染压力，减少 CPU 占用 -->
+        <preference name="android-hardwareAccelerated" value="true" />
+        <!-- 允许 WebView 访问应用私有文件，避免多余的跨域读写缓存 -->
+        <preference name="AllowUntrustedCerts" value="true" />
+        <!-- 允许加载所有 http:// 明文海报与背景图 -->
+        <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
+            <application android:usesCleartextTraffic="true" />
+        </edit-config>
     </platform>
 </widget>
