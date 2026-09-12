@@ -67,9 +67,9 @@ cordova_init_code = """
         }
 
         // 隐藏顶部状态栏（全屏沉浸）
-        if (window.StatusBar) {
-            window.StatusBar.hide();
-        }
+        // if (window.StatusBar) {
+            // window.StatusBar.hide();
+        // }
     });
 </script>
 """
