@@ -68,7 +68,7 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      # 配置系统自带的 Android SDK 环境变量，并安装 API 29 平台
+      # 配置系统自带的 Android SDK 环境变量
       - name: Setup Android SDK Environment
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
@@ -79,9 +79,8 @@ jobs:
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-          # 自动静默同意安卓协议，并确保 API 29 和 Build Tools 29 安装就绪
           yes | sdkmanager --licenses || true
-          yes | sdkmanager "platforms;android-29" "build-tools;29.0.3" || true
+          yes | sdkmanager "platforms;android-29" "platforms;android-30" "build-tools;29.0.3" "build-tools;30.0.3" || true
 
       # 6. 初始化 Cordova 工程、读取 config.xml 版本、自增 versionCode、还原证书并打包
       - name: Setup Cordova & Build Signed Release APK
@@ -147,7 +146,7 @@ jobs:
           cordova plugin add cordova-plugin-androidx-adapter || true
 
           # 添加匹配 API 29 和 Java 11 的平台版本
-          cordova platform add android@9.1.0
+          cordova platform add android@10.1.2
 
           # 从 Secret 还原你的 aston.keystore 文件
           echo "$KEYSTORE_BASE64" | base64 --decode > aston.keystore
