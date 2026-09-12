@@ -328,7 +328,7 @@ OPEN_TORRENT_SERVER_CODE = r"""window.plugins.intentShim.startActivity(
         );
         //AndroidJS.openTorrentLink(SERVER.object.MagnetUri || SERVER.object.Link, JSON.stringify(intentExtra));"""
 
-# 模板 5: 外部播放器调起与时间轴回传
+# 模板 5: 外部播放器调起与时间轴回传（修复 Timeline 作用域与命名空间）
 OPEN_PLAYER_INTENT_CODE = r"""//Android.openPlayer(data.url, data);
      //{
       var intentExtra = {
@@ -353,19 +353,23 @@ OPEN_PLAYER_INTENT_CODE = r"""//Android.openPlayer(data.url, data);
           time = (itent.extras.position || itent.extras.extra_position) / 1000;
           duration = (itent.extras.duration || itent.extras.extra_duration) / 1000;
           (duration > 0) ? percent = parseInt(time * 100 / duration) : percent = 100;
-            if (time && data.timeline) {
-            var new_result = {};
-            new_result.hash = data.timeline.hash;
-            new_result.time = time;
-            new_result.duration = duration;
-            new_result.percent = percent;
-            
-            data.timeline.handler(percent, time, duration);
-            data.timeline.time =time;
+          
+          if (time && data.timeline) {
+            data.timeline.time = time;
             data.timeline.duration = duration;
             data.timeline.percent = percent;
-            
-            Timeline.update(new_result);
+
+            // 触发卡片/剧集进度条刷新
+            if (typeof data.timeline.handler === 'function') {
+              data.timeline.handler(percent, time, duration);
+            }
+
+            // 安全调用 Lampa.Timeline 存储进度
+            if (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.update === 'function') {
+              Lampa.Timeline.update(data.timeline);
+            } else if (typeof Timeline !== 'undefined' && typeof Timeline.update === 'function') {
+              Timeline.update(data.timeline);
+            }
           };
         }, function() {
           console.log("Failed to open video URL via Android Intent");
