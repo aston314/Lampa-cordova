@@ -33,7 +33,7 @@
         
         <!-- 隐藏顶部状态栏
         <preference name="StatusBarOverlaysWebView" value="true" />
-        <preference name="StatusBarBackgroundColor" value="#000000" /> -->
+        <preference name="StatusBarBackgroundColor" value="#00000000" /> -->
         
         
         <icon density="mdpi" src="res/icons/android/mipmap-mdpi/ic_launcher.png" />
