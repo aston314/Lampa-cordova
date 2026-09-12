@@ -76,6 +76,7 @@ jobs:
           echo "/opt/gradle-7.4.2/bin" >> $GITHUB_PATH
 
       # 确保精准安装 build-tools 30.0.3
+      # 配置系统自带的 Android SDK（借用自带的 Java 17 运行 sdkmanager 安装 30.0.3）
       - name: Setup Android SDK Environment
         if: steps.check_upstream.outputs.should_run == 'true'
         run: |
@@ -84,8 +85,9 @@ jobs:
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
-          export SKIP_JDK_VERSION_CHECK=true
-          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH
+          # 借用 GitHub 预装的 Java 17 运行 Google 的最新 sdkmanager 工具
+          export JAVA_HOME=$JAVA_HOME_17_X64
+          export PATH=$JAVA_HOME_17_X64/bin:$PATH
 
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;30.0.3" "platforms;android-30" "platforms;android-29"
