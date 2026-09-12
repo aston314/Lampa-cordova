@@ -12,6 +12,7 @@ permissions:
 jobs:
   check-and-build:
     runs-on: ubuntu-latest
+    environment: lampa 
 
     steps:
       # 1. 检出当前仓库
@@ -94,9 +95,9 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           # 如果 Secrets 未配置，自动使用你的真实参数作为兜底，确保签名顺利
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || '197346' }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'ASTON' }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || '197346' }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           # 全局安装 Cordova
           npm install -g cordova
