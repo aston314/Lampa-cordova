@@ -54,6 +54,20 @@ with open(html_file, "r", encoding="utf-8") as f:
 cordova_init_code = r"""
 <script src="cordova.js"></script>
 <script>
+        // Cordova 初始化
+        document.addEventListener('deviceready', function () {
+            if (document.readyState === 'complete') {
+                if (navigator.splashscreen) navigator.splashscreen.hide();
+            } else {
+                window.addEventListener('load', function () {
+                    if (navigator.splashscreen) navigator.splashscreen.hide();
+                });
+            }
+
+            document.addEventListener('menubutton', function (e) {
+                triggerAstonQuickMenu();
+            }, false);
+        });
     (function () {
         // 弹出快捷操作菜单
         function triggerAstonQuickMenu() {
@@ -133,21 +147,6 @@ cordova_init_code = r"""
                 triggerAstonQuickMenu();
             }
         }, true);
-
-        // Cordova 初始化
-        document.addEventListener('deviceready', function () {
-            if (document.readyState === 'complete') {
-                if (navigator.splashscreen) navigator.splashscreen.hide();
-            } else {
-                window.addEventListener('load', function () {
-                    if (navigator.splashscreen) navigator.splashscreen.hide();
-                });
-            }
-
-            document.addEventListener('menubutton', function (e) {
-                triggerAstonQuickMenu();
-            }, false);
-        });
     })();
 </script>
 """
