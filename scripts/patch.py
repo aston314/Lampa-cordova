@@ -202,7 +202,7 @@ ALL_LANG_EMBEDDED_CODE = (
 
 # ================= 3. 定义大段代码模板 =================
 
-CORDOVA_HTTP_REQ_CODE_old = r"""if (!!window.cordova) {
+CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
 
         function tryParseJSON(str) {
           try {
@@ -393,72 +393,6 @@ CORDOVA_HTTP_REQ_CODE_old = r"""if (!!window.cordova) {
             }
           }
         }
-      } else {
-        Android.httpReq(params, {
-          complite: secuses,
-          error: error
-        });
-      };"""
-CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova && window.cordova.plugin && cordova.plugin.http) {
-
-        // 1. 忽略自签名与过期证书
-        try {
-          cordova.plugin.http.setServerTrustMode('nocheck', function() {}, function() {});
-        } catch(e) {}
-
-        var url = params.url;
-        var data = params.post_data;
-        var headers = params.headers || {};
-        var dataType = params.dataType || 'json';
-        var isPost = Boolean(data);
-
-        // 2. 序列化判断
-        var serializer = 'utf8';
-        var sendData = data || {};
-
-        if (isPost) {
-          if (typeof data === 'object') {
-            serializer = 'json';
-          } else if (typeof data === 'string') {
-            try {
-              sendData = JSON.parse(data);
-              serializer = 'json';
-            } catch (e) {
-              serializer = 'utf8';
-            }
-          }
-        }
-
-        // 3. 配置请求选项（核心：锁定 responseType: 'text' 防止双重解析报错）
-        var options = {
-          method: isPost ? 'post' : 'get',
-          data: sendData,
-          headers: headers,
-          serializer: serializer,
-          responseType: 'text',
-          timeout: 15
-        };
-
-        // 4. 发起统一请求
-        cordova.plugin.http.sendRequest(url, options, function (response) {
-          var resData = response.data;
-          if (dataType === 'json') {
-            try {
-              secuses(JSON.parse(resData));
-            } catch (e) {
-              // 容错：有些源返回的已经不是严格 JSON，直接传原文
-              secuses(resData);
-            }
-          } else {
-            secuses(resData);
-          }
-        }, function (response) {
-          // 确保必定触发 error 回调，彻底告别卡 Loading
-          error({
-            status: response.status || 500
-          }, response.error || '');
-        });
-
       } else {
         Android.httpReq(params, {
           complite: secuses,
