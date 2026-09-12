@@ -343,6 +343,11 @@ VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
 # ================= 3. 严格替换规则列表（共 19 项） =================
 STRICT_RULES = [
     {
+        "name": "允许在 Cordova 下激活 AndroidJS 平台逻辑分支",
+        "pattern": r"if\s*\(\s*typeof AndroidJS !== 'undefined'\s*\)",
+        "new": "if (typeof AndroidJS !== 'undefined' || !!window.cordova)"
+    },
+    {
         "name": "退出代码替换 Android.exit()",
         "pattern": r"Android\.exit\(\)",
         "new": "!!window.cordova ? navigator.app.exitApp() : Android.exit()"
@@ -416,11 +421,6 @@ STRICT_RULES = [
         "name": "海报播放 action: play 注入 2",
         "pattern": r"poster:\s*SERVER\.object\.poster,\s*media:\s*SERVER\.movie\.name\s*\?\s*'tv'\s*:\s*'movie',\s*data:\s*\{",
         "new": "poster: SERVER.object.poster,\n        media: SERVER.movie.name ? 'tv' : 'movie',\n        action: \"play\",\n        data: {"
-    },
-    {
-        "name": "允许在 Cordova 下激活 AndroidJS 平台逻辑分支",
-        "pattern": r"if\s*\(\s*typeof AndroidJS !== 'undefined'\s*\)",
-        "new": "if (typeof AndroidJS !== 'undefined' || !!window.cordova)"
     },
     {
         "name": "修复 AndroidJS.appVersion 崩溃并设置 versionCode=28 兜底",
