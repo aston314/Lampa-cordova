@@ -31,6 +31,11 @@
         <preference name="AndroidPersistentFileLocation" value="Compatibility" />
         <preference name="Fullscreen" value="true" />
         
+        <!-- 隐藏顶部状态栏 -->
+        <preference name="StatusBarOverlaysWebView" value="true" />
+        <preference name="StatusBarBackgroundColor" value="#000000" />
+        
+        
         <icon density="mdpi" src="res/icons/android/mipmap-mdpi/ic_launcher.png" />
         <icon density="hdpi" src="res/icons/android/mipmap-hdpi/ic_launcher.png" />
         <icon density="xhdpi" src="res/icons/android/mipmap-xhdpi/ic_launcher.png" />
