@@ -1,14 +1,53 @@
 import os
 import sys
 import re
+import urllib.request
+import urllib.parse
 
 UPSTREAM_DIR = "upstream_code"
+
+# ================= 0. 发送 ntfy.sh 手机告警函数 =================
+def send_ntfy_alert(failed_rule_names):
+    ntfy_topic = os.environ.get("NTFY_TOPIC", "").strip()
+    if not ntfy_topic:
+        print("[Info] 未配置 NTFY_TOPIC，跳过手机告警通知。")
+        return
+
+    run_id = os.environ.get("GITHUB_RUN_ID", "")
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    action_url = f"https://github.com/{repo}/actions/runs/{run_id}" if run_id and repo else ""
+
+    # 组装报警消息正文
+    message = "上游 yumata/lampa 源码有更新，但以下规则未匹配成功，已自动终止打包：\n\n"
+    for name in failed_rule_names:
+        message += f"❌ {name}\n"
+    message += "\n请点击此通知直达 GitHub Actions 查看详情并更新规则。"
+
+    # 使用 query 参数传递标题与点击动作，彻底避免编码异常
+    query_params = {
+        "title": "⚠️ Lampa 源码规则熔断报警",
+        "priority": "urgent", # 紧急级别（手机高优先级震动/响铃）
+        "tags": "warning,skull"
+    }
+    if action_url:
+        query_params["click"] = action_url
+
+    url = f"https://ntfy.sh/{ntfy_topic}?" + urllib.parse.urlencode(query_params)
+    req = urllib.request.Request(url, data=message.encode("utf-8"))
+
+    try:
+        urllib.request.urlopen(req, timeout=10)
+        print(f"[Info] 🔔 已成功向 ntfy.sh/{ntfy_topic} 发送手机故障告警通知！")
+    except Exception as e:
+        print(f"[Warning] ntfy.sh 通知发送失败: {e}")
+
 
 # ================= 1. 注入 index.html (Cordova.js + 闪屏/状态栏) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
     print(f"[FATAL ERROR] 找不到入口文件: {html_file}，打包终止！")
+    send_ntfy_alert(["找不到入口文件 index.html"])
     sys.exit(1)
 
 with open(html_file, "r", encoding="utf-8") as f:
@@ -42,6 +81,7 @@ if "<head>" in html_content:
     print("[Success] index.html 成功注入 Cordova 初始化与状态栏/闪屏脚本")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
+    send_ntfy_alert(["index.html 中未找到 <head> 标签"])
     sys.exit(1)
 
 
@@ -51,15 +91,13 @@ all_embedded_langs = {}
 
 if os.path.exists(lang_dir):
     for filename in sorted(os.listdir(lang_dir)):
-        # 扫描所有 .js 文件，排除 meta.js
         if filename.endswith(".js") and filename != "meta.js":
-            lang_code = filename[:-3] # 提取如 zh, uk, be, fr
+            lang_code = filename[:-3]
             filepath = os.path.join(lang_dir, filename)
             try:
                 with open(filepath, "r", encoding="utf-8") as f:
                     raw_content = f.read()
                 
-                # 剔除开头的 export default，转换为合法的 JS 对象字面量
                 clean_obj = re.sub(r"^\s*export\s+default\s*", "", raw_content).strip()
                 if clean_obj.endswith(";"):
                     clean_obj = clean_obj[:-1]
@@ -69,14 +107,12 @@ if os.path.exists(lang_dir):
             except Exception as e:
                 print(f"[Warning] 解析语言包 {filename} 失败: {e}")
 
-# 拼接所有语言为一个全局字典对象: { "zh": {...}, "uk": {...}, ... }
 lang_entries = []
 for code, obj_str in all_embedded_langs.items():
     lang_entries.append(f'"{code}": {obj_str}')
 
 embedded_langs_js = "{\n" + ",\n".join(lang_entries) + "\n}"
 
-# 构造替换 loadLang 的全语言内置逻辑
 ALL_LANG_EMBEDDED_CODE = (
     "var embedded_langs = " + embedded_langs_js + ";\n"
     "    if (embedded_langs[code]) {\n"
@@ -88,7 +124,6 @@ ALL_LANG_EMBEDDED_CODE = (
 
 # ================= 3. 定义大段代码模板 =================
 
-# 模板 1: Cordova 网络请求实现
 CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
 
         function tryParseJSON(str) {
@@ -287,7 +322,6 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
         });
       };"""
 
-# 模板 2: YouTube Intent 调起
 OPEN_YOUTUBE_CODE = r"""window.plugins.intentShim.startActivity({
           action : window.plugins.intentShim.ACTION_VIEW,
           url : link
@@ -296,7 +330,6 @@ OPEN_YOUTUBE_CODE = r"""window.plugins.intentShim.startActivity({
           console.log("Failed to open Youtube URL via Android Intent");
         });"""
 
-# 模板 3: 磁力链接 Intent 1
 OPEN_TORRENT_MAGNET_CODE = r"""else {
         intentExtra = {
           action: "play",
@@ -316,7 +349,6 @@ OPEN_TORRENT_MAGNET_CODE = r"""else {
       );
       //AndroidJS.openTorrentLink(magnet, JSON.stringify(intentExtra));"""
 
-# 模板 4: 磁力链接 Intent 2
 OPEN_TORRENT_SERVER_CODE = r"""window.plugins.intentShim.startActivity(
         {
             action: window.plugins.intentShim.ACTION_VIEW,
@@ -328,7 +360,6 @@ OPEN_TORRENT_SERVER_CODE = r"""window.plugins.intentShim.startActivity(
         );
         //AndroidJS.openTorrentLink(SERVER.object.MagnetUri || SERVER.object.Link, JSON.stringify(intentExtra));"""
 
-# 模板 5: 外部播放器调起与时间轴回传（修复 Timeline 作用域与命名空间）
 OPEN_PLAYER_INTENT_CODE = r"""//Android.openPlayer(data.url, data);
      //{
       var intentExtra = {
@@ -359,12 +390,10 @@ OPEN_PLAYER_INTENT_CODE = r"""//Android.openPlayer(data.url, data);
             data.timeline.duration = duration;
             data.timeline.percent = percent;
 
-            // 触发卡片/剧集进度条刷新
             if (typeof data.timeline.handler === 'function') {
               data.timeline.handler(percent, time, duration);
             }
 
-            // 安全调用 Lampa.Timeline 存储进度
             if (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.update === 'function') {
               Lampa.Timeline.update(data.timeline);
             } else if (typeof Timeline !== 'undefined' && typeof Timeline.update === 'function') {
@@ -375,7 +404,6 @@ OPEN_PLAYER_INTENT_CODE = r"""//Android.openPlayer(data.url, data);
           console.log("Failed to open video URL via Android Intent");
         });"""
 
-# 模板 6: 版本号 fallback
 VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         if (typeof AndroidJS !== 'undefined') {
             var current = AndroidJS.appVersion().split('-');
@@ -499,7 +527,6 @@ STRICT_RULES = [
     }
 ]
 
-# 待检查的目标文件
 TARGET_FILES = [
     os.path.join(UPSTREAM_DIR, "index.html"),
     os.path.join(UPSTREAM_DIR, "app.min.js")
@@ -514,8 +541,8 @@ for file_path in TARGET_FILES:
             file_data[file_path] = f.read()
 
 has_error = False
+failed_rules = []
 
-# 逐条严格比对替换
 for rule in STRICT_RULES:
     rule_name = rule["name"]
     pattern = rule["pattern"]
@@ -532,17 +559,19 @@ for rule in STRICT_RULES:
     if total_replaced == 0:
         print(f"❌ [VERIFY FAILED] 规则【{rule_name}】失败！未在代码中匹配到目标段落。\n   Pattern: {pattern}")
         has_error = True
+        failed_rules.append(rule_name)
     else:
         print(f"✅ [VERIFY PASSED] 规则【{rule_name}】验证通过（共替换 {total_replaced} 处）\n")
 
-# 只要有任何一条规则未替换成功，立刻熔断终止打包
+# 只要有任何一条规则未替换成功，先发手机告警，然后立刻熔断终止打包
 if has_error:
     print("=" * 65)
-    print("[FATAL ERROR] 存在未通过校验的替换规则，为保证 APK 可用性，工作流已主动终止！")
+    print("[FATAL ERROR] 存在未通过校验的替换规则，正在向手机发送报警通知...")
+    send_ntfy_alert(failed_rules)
+    print("[FATAL ERROR] 为保证 APK 可用性，工作流已主动终止！")
     print("=" * 65)
     sys.exit(1)
 
-# 全部验证通过后写回文件
 for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
