@@ -54,7 +54,7 @@ jobs:
         run: |
           python3 scripts/patch.py
 
-      # 5. 配置构建环境 (Node 18 + Java 11 + Android SDK API 29)
+      # 5. 配置构建环境 (Node 18 + Java 11 + 系统原生 Android SDK)
       - name: Setup Node.js
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: actions/setup-node@v4
@@ -68,12 +68,20 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      - name: Setup Android SDK API 29
+      # 配置系统自带的 Android SDK 环境变量，并安装 API 29 平台
+      - name: Setup Android SDK Environment
         if: steps.check_upstream.outputs.should_run == 'true'
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 29
-          build-tools: 29.0.3
+        env:
+          SKIP_JDK_VERSION_CHECK: "true"
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+          # 自动静默同意安卓协议，并确保 API 29 和 Build Tools 29 安装就绪
+          yes | sdkmanager --licenses || true
+          yes | sdkmanager "platforms;android-29" "build-tools;29.0.3" || true
 
       # 6. 初始化 Cordova 工程、读取 config.xml 版本、自增 versionCode、还原证书并打包
       - name: Setup Cordova & Build Signed Release APK
