@@ -17,16 +17,14 @@ def send_ntfy_alert(failed_rule_names):
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     action_url = f"https://github.com/{repo}/actions/runs/{run_id}" if run_id and repo else ""
 
-    # 组装报警消息正文
     message = "上游 yumata/lampa 源码有更新，但以下规则未匹配成功，已自动终止打包：\n\n"
     for name in failed_rule_names:
         message += f"❌ {name}\n"
     message += "\n请点击此通知直达 GitHub Actions 查看详情并更新规则。"
 
-    # 使用 query 参数传递标题与点击动作，彻底避免编码异常
     query_params = {
         "title": "⚠️ Lampa 源码规则熔断报警",
-        "priority": "urgent", # 紧急级别（手机高优先级震动/响铃）
+        "priority": "urgent",
         "tags": "warning,skull"
     }
     if action_url:
@@ -42,7 +40,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (Cordova.js + 闪屏/状态栏) =================
+# ================= 1. 注入 index.html (Cordova + 闪屏 + 遥控器全语言菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -53,11 +51,12 @@ if not os.path.exists(html_file):
 with open(html_file, "r", encoding="utf-8") as f:
     html_content = f.read()
 
-cordova_init_code = """
+# 包含 Cordova 通信、启动图关闭，以及遥控器菜单键（带 12 种全语言自动翻译）
+cordova_init_code = r"""
 <script src="cordova.js"></script>
 <script>
     document.addEventListener('deviceready', function () {
-        // 隐藏启动闪屏（兼容 load 事件）
+        // 1. 隐藏启动闪屏
         if (document.readyState === 'complete') {
             if (navigator.splashscreen) navigator.splashscreen.hide();
         } else {
@@ -66,10 +65,74 @@ cordova_init_code = """
             });
         }
 
-        // 隐藏顶部状态栏（全屏沉浸）
-        if (window.StatusBar) {
-            window.StatusBar.hide();
-        }
+        // 2. 遥控器菜单键（Menu）弹出快捷操作菜单（12 种全语言自动适配）
+        document.addEventListener('menubutton', function () {
+            // 如果正在播放内置视频，不打扰观影
+            if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
+                return;
+            }
+
+            if (window.Lampa && Lampa.Select && Lampa.Lang) {
+                // 仅在首次触发时注册 12 种语言字典
+                if (!window._aston_menu_lang_inited) {
+                    Lampa.Lang.add({
+                        aston_menu_title: {
+                            zh: '快捷菜单', en: 'Quick Menu', ru: 'Быстрое меню', uk: 'Швидке меню',
+                            be: 'Хуткае меню', bg: 'Бързо меню', cs: 'Rychlé menu', fr: 'Menu rapide',
+                            he: 'תפריט מהיר', pl: 'Szybkie menu', pt: 'Menu rápido', ro: 'Meniu rapid'
+                        },
+                        aston_menu_exit: {
+                            zh: '退出应用', en: 'Exit', ru: 'Выход', uk: 'Вихід',
+                            be: 'Выхад', bg: 'Изход', cs: 'Ukončit', fr: 'Quitter',
+                            he: 'יציאה', pl: 'Wyjście', pt: 'Sair', ro: 'Ieșire'
+                        },
+                        aston_menu_exit_descr: {
+                            zh: '退出并关闭 Lampa', en: 'Close and exit Lampa', ru: 'Закрыть и выйти из Lampa', uk: 'Закрити та вийти з Lampa',
+                            be: 'Закрыць і выйсці з Lampa', bg: 'Затваряне и изход от Lampa', cs: 'Zavřít a ukončit Lampa', fr: 'Fermer et quitter Lampa',
+                            he: 'סגירה ויציאה מ-Lampa', pl: 'Zamknij i wyjdź z Lampa', pt: 'Fechar e sair do Lampa', ro: 'Închide și ieși din Lampa'
+                        },
+                        aston_menu_reload: {
+                            zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити',
+                            be: 'Перазагрузіць', bg: 'Презареждане', cs: 'Znovu načíst', fr: 'Recharger',
+                            he: 'טעינה מחדש', pl: 'Przeładuj', pt: 'Recarregar', ro: 'Reîncărcare'
+                        },
+                        aston_menu_reload_descr: {
+                            zh: '刷新当前界面与数据', en: 'Refresh interface and data', ru: 'Обновить интерфейс и данные', uk: 'Оновити інтерфейс та дані',
+                            be: 'Абнавіць інтэрфейс і дадзеныя', bg: 'Опресняване на интерфейса и данните', cs: 'Obnovit rozhraní a data', fr: 'Actualiser l\'interface et les données',
+                            he: 'רענון הממשק והנתונים', pl: 'Odśwież interfejs i dane', pt: 'Atualizar interface e dados', ro: 'Reîmprospătează interfața și datele'
+                        }
+                    });
+                    window._aston_menu_lang_inited = true;
+                }
+
+                // 调起 Lampa 原生 TV 样式弹窗
+                Lampa.Select.show({
+                    title: Lampa.Lang.translate('aston_menu_title'),
+                    items: [
+                        {
+                            title: Lampa.Lang.translate('aston_menu_exit'),
+                            subtitle: Lampa.Lang.translate('aston_menu_exit_descr'),
+                            onSelect: function () {
+                                navigator.app.exitApp();
+                            }
+                        },
+                        {
+                            title: Lampa.Lang.translate('aston_menu_reload'),
+                            subtitle: Lampa.Lang.translate('aston_menu_reload_descr'),
+                            onSelect: function () {
+                                window.location.reload();
+                            }
+                        }
+                    ],
+                    onBack: function () {
+                        // 返回时安全归还焦点
+                        if (Lampa.Controller) {
+                            Lampa.Controller.toggle('content');
+                        }
+                    }
+                });
+            }
+        }, false);
     });
 </script>
 """
@@ -78,7 +141,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", f"<head>\n{cordova_init_code}", 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入 Cordova 初始化与状态栏/闪屏脚本")
+    print("[Success] index.html 成功注入 Cordova 初始化、遥控器多语言菜单与启动脚本")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -563,7 +626,6 @@ for rule in STRICT_RULES:
     else:
         print(f"✅ [VERIFY PASSED] 规则【{rule_name}】验证通过（共替换 {total_replaced} 处）\n")
 
-# 只要有任何一条规则未替换成功，先发手机告警，然后立刻熔断终止打包
 if has_error:
     print("=" * 65)
     print("[FATAL ERROR] 存在未通过校验的替换规则，正在向手机发送报警通知...")
@@ -576,4 +638,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 22 条规则校验 100% 通过，全语言与功能补丁安全就绪！准许打包 APK。\n")
+print("[Success] 所有 22 条规则校验 100% 通过，全语言遥控器菜单与功能补丁就绪！准许打包 APK。\n")
