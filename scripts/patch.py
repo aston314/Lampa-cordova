@@ -125,16 +125,25 @@ cordova_init_code = r"""
             }
         }
 
-        // 通道 1：DOM 键盘按键捕获阶段拦截（最关键！抢在所有框架前截获 82 和 93）
+        // 探针测试：捕获遥控器按下的任何按键并在屏幕打印
         window.addEventListener('keydown', function (e) {
             var code = e.keyCode || e.which;
-            // 82: 标准菜单键, 93: ContextMenu 菜单键, 或名字为 Menu
-            if (code === 82 || code === 93 || e.key === 'Menu' || e.key === 'ContextMenu') {
-                e.preventDefault();
-                e.stopPropagation(); // 阻止 Lampa 自身吞掉该键
+            
+            // 在屏幕左上角弹出半透明黑色提示框
+            var tip = document.getElementById('debug_key_tip');
+            if (!tip) {
+                tip = document.createElement('div');
+                tip.id = 'debug_key_tip';
+                tip.style.cssText = 'position:fixed;top:20px;left:20px;background:rgba(255,0,0,0.9);color:#fff;padding:15px 25px;font-size:24px;z-index:9999999;border-radius:8px;font-weight:bold;';
+                document.body.appendChild(tip);
+            }
+            tip.innerText = '按键信号: KeyCode = ' + code + ' | Key = ' + e.key;
+
+            // 如果按到了 82 或 93，触发菜单
+            if (code === 82 || code === 93) {
                 triggerAstonQuickMenu();
             }
-        }, true); // true 代表在【捕获阶段】优先截取
+        }, true);
 
         // 通道 2：Cordova 原生 menubutton 事件双保险
         document.addEventListener('deviceready', function () {
