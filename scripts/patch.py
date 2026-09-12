@@ -51,23 +51,14 @@ if not os.path.exists(html_file):
 with open(html_file, "r", encoding="utf-8") as f:
     html_content = f.read()
 
-# 包含 Cordova 通信、启动图关闭，以及遥控器菜单键（带 12 种全语言自动翻译）
+# 包含 Cordova 通信、启动图关闭，以及支持 DOM 键盘捕获 + 12 种全语言菜单
 cordova_init_code = r"""
 <script src="cordova.js"></script>
 <script>
-    document.addEventListener('deviceready', function () {
-        // 1. 隐藏启动闪屏
-        if (document.readyState === 'complete') {
-            if (navigator.splashscreen) navigator.splashscreen.hide();
-        } else {
-            window.addEventListener('load', function() {
-                if (navigator.splashscreen) navigator.splashscreen.hide();
-            });
-        }
-
-        // 2. 遥控器菜单键（Menu）弹出快捷操作菜单（12 种全语言自动适配）
-        document.addEventListener('menubutton', function () {
-            // 如果正在播放内置视频，不打扰观影
+    (function () {
+        // 弹出快捷菜单的核心函数
+        function triggerAstonQuickMenu() {
+            // 如果正在使用内置播放器播放视频，不打扰观影
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
                 return;
             }
@@ -105,7 +96,6 @@ cordova_init_code = r"""
                     window._aston_menu_lang_inited = true;
                 }
 
-                // 调起 Lampa 原生 TV 样式弹窗
                 Lampa.Select.show({
                     title: Lampa.Lang.translate('aston_menu_title'),
                     items: [
@@ -113,7 +103,9 @@ cordova_init_code = r"""
                             title: Lampa.Lang.translate('aston_menu_exit'),
                             subtitle: Lampa.Lang.translate('aston_menu_exit_descr'),
                             onSelect: function () {
-                                navigator.app.exitApp();
+                                if (navigator.app && navigator.app.exitApp) {
+                                    navigator.app.exitApp();
+                                }
                             }
                         },
                         {
@@ -125,15 +117,40 @@ cordova_init_code = r"""
                         }
                     ],
                     onBack: function () {
-                        // 返回时安全归还焦点
                         if (Lampa.Controller) {
                             Lampa.Controller.toggle('content');
                         }
                     }
                 });
             }
-        }, false);
-    });
+        }
+
+        // 通道 1：DOM 键盘按键捕获阶段拦截（最关键！抢在所有框架前截获 82 和 93）
+        window.addEventListener('keydown', function (e) {
+            var code = e.keyCode || e.which;
+            // 82: 标准菜单键, 93: ContextMenu 菜单键, 或名字为 Menu
+            if (code === 82 || code === 93 || e.key === 'Menu' || e.key === 'ContextMenu') {
+                e.preventDefault();
+                e.stopPropagation(); // 阻止 Lampa 自身吞掉该键
+                triggerAstonQuickMenu();
+            }
+        }, true); // true 代表在【捕获阶段】优先截取
+
+        // 通道 2：Cordova 原生 menubutton 事件双保险
+        document.addEventListener('deviceready', function () {
+            if (document.readyState === 'complete') {
+                if (navigator.splashscreen) navigator.splashscreen.hide();
+            } else {
+                window.addEventListener('load', function () {
+                    if (navigator.splashscreen) navigator.splashscreen.hide();
+                });
+            }
+
+            document.addEventListener('menubutton', function (e) {
+                triggerAstonQuickMenu();
+            }, false);
+        });
+    })();
 </script>
 """
 
