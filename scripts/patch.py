@@ -381,7 +381,7 @@ VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         };"""
 
 
-# ================= 4. 严格替换规则列表 =================
+# ================= 4. 严格替换规则列表（共 22 项） =================
 STRICT_RULES = [
     {
         "name": "退出代码替换 Android.exit()",
@@ -487,6 +487,11 @@ STRICT_RULES = [
         "name": "全语言包自动内嵌（全语言离线支持、0秒切换、彻底告别语法错误）",
         "pattern": r"if\s*\(\s*\['ru',\s*'en'\]\.indexOf\(code\)\s*>=\s*0\s*\)\s*loadTask\(\);",
         "new": ALL_LANG_EMBEDDED_CODE
+    },
+    {
+        "name": "默认关闭屏保 screensaver",
+        "pattern": r"trigger\(\s*['\"]screensaver['\"]\s*,\s*true\s*\);",
+        "new": "trigger('screensaver', false);"
     }
 ]
 
@@ -514,7 +519,6 @@ for rule in STRICT_RULES:
     total_replaced = 0
     
     for file_path, content in file_data.items():
-        # 使用 lambda 避免替换内容中的特殊字符影响正则解析
         new_content, count = re.subn(pattern, lambda m: new_text, content)
         if count > 0:
             file_data[file_path] = new_content
@@ -539,4 +543,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有规则校验 100% 通过，全语言包已完美内嵌！准许打包 APK。\n")
+print("[Success] 所有 22 条规则校验 100% 通过，全语言与功能补丁安全就绪！准许打包 APK。\n")
