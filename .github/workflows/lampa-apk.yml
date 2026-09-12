@@ -136,14 +136,14 @@ jobs:
 
           # 安装指定的 7 个核心插件
           cordova plugin add com-darryncampbell-cordova-plugin-intent@2.2.0
-          cordova plugin add cordova-plugin-fetch@0.1.0
+          cordova plugin add https://github.com/aporat/cordova-plugin-fetch.git
           cordova plugin add cordova-plugin-file@7.0.0
           cordova plugin add cordova-plugin-http@1.2.0
           cordova plugin add cordova-plugin-splashscreen@6.0.2
           cordova plugin add cordova-plugin-inappbrowser@5.0.0
           cordova plugin add cordova-plugin-statusbar@3.0.0
 
-          # 启用 AndroidX 依赖兼容（解决旧版 http 插件报错）
+          # 启用 AndroidX 依赖兼容
           cordova plugin add cordova-plugin-androidx-adapter || true
 
           # 添加匹配 API 29 和 Java 11 的平台版本
