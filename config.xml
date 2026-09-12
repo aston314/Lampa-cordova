@@ -49,5 +49,28 @@
         
         <!-- 允许 WebView 访问应用私有文件，避免多余的跨域读写缓存 -->
         <preference name="AllowUntrustedCerts" value="true" />
+        
+        <!-- ================= Android TV 电视专属配置 ================= -->
+        <!-- 1. 声明支持电视（设置 required="false" 可以让手机和平板也能正常安装） -->
+        <uses-feature android:name="android.software.leanback" android:required="false" />
+        <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+        <!-- 2. 将仓库里的 banner.png 自动拷贝到 Android 平台的 drawable 资源目录 -->
+        <resource-file src="res/banner.png" target="app/src/main/res/drawable/banner.png" />
+
+        <!-- 3. 将 banner 挂载到应用，并添加 LEANBACK 电视桌面启动器入口 -->
+        <config-file target="AndroidManifest.xml" parent="/manifest/application">
+            <meta-data android:name="isAndroidTV" android:value="true" />
+        </config-file>
+        
+        <config-file target="AndroidManifest.xml" parent="/manifest/application/activity[@android:name='MainActivity']">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </config-file>
+
+        <!-- 关联图标与横幅 -->
+        <preference name="AndroidTVBanner" value="res/banner.png" />
     </platform>
 </widget>
