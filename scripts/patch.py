@@ -201,7 +201,7 @@ ALL_LANG_EMBEDDED_CODE = (
 
 # ================= 3. 定义大段代码模板 =================
 
-CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
+CORDOVA_HTTP_REQ_CODE_old = r"""if (!!window.cordova) {
 
         function tryParseJSON(str) {
           try {
@@ -392,6 +392,143 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
             }
           }
         }
+      } else {
+        Android.httpReq(params, {
+          complite: secuses,
+          error: error
+        });
+      };"""
+
+CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
+
+        // 1. 全局单例：忽略自签名证书（仅初始化执行一次，避免频繁跨进程 IPC 通信）
+        if (!window._cordova_certs_accepted && window.cordovaHTTP) {
+          cordovaHTTP.acceptAllCerts(true, function () {}, function () {});
+          window._cordova_certs_accepted = true;
+        }
+
+        var url = params.url;
+        var data = params.post_data;
+        var headers = params.headers || {};
+        var dataType = params.dataType || 'json';
+        var contentType = params.contentType || '';
+
+        // 2. 辅助数据判断
+        var isJsonString = false;
+        var requestContent = "";
+
+        if (data) {
+          if (typeof data === "string") {
+            requestContent = data;
+            try {
+              JSON.parse(requestContent);
+              isJsonString = true;
+              contentType = contentType || "application/json";
+            } catch (e) {
+              contentType = contentType || "application/x-www-form-urlencoded";
+            }
+          } else if (typeof data === "object") {
+            contentType = "application/json";
+            requestContent = JSON.stringify(data);
+            isJsonString = true;
+          }
+        }
+
+        // 规范化 Content-Type 字段
+        if (requestContent !== "") {
+          var hasContentType = false;
+          for (var k in headers) {
+            if (k.toLowerCase() === 'content-type') {
+              hasContentType = true;
+              break;
+            }
+          }
+          if (!hasContentType) {
+            headers["Content-Type"] = contentType;
+          }
+        }
+
+        // 3. 规范标准 Fetch 调度函数（彻底解决 _result 私有属性暗坑）
+        function executeFetch(targetUrl, method, bodyContent) {
+          var fetchOptions = {
+            method: method,
+            headers: headers
+          };
+          if (bodyContent) {
+            fetchOptions.body = bodyContent;
+          }
+          if (window.cordovaFetch && cordovaFetch.setTimeout) {
+            cordovaFetch.setTimeout = 60;
+          }
+
+          cordovaFetch(targetUrl, fetchOptions)
+            .then(function (response) {
+              if (response.status >= 200 && response.status < 400) {
+                // 标准 Promise 链式转换，绝对不会返回 undefined
+                return dataType === 'json' ? response.json() : response.text();
+              } else {
+                throw { status: response.status, error: response.statusText };
+              }
+            })
+            .then(function (parsedData) {
+              secuses(parsedData);
+            })
+            .catch(function (err) {
+              error({ status: (err && err.status) || 404 }, (err && err.error) || '');
+            });
+        }
+
+        // 4. 路由分发决策
+        if (!requestContent) {
+          // --- 无 Body 的 GET 请求 ---
+          if (url.includes('ddys')) {
+            executeFetch(url, 'GET', null);
+          } else {
+            cordovaHTTP.get(url, {}, headers, function (response) {
+              if (dataType === 'json') {
+                try {
+                  secuses(JSON.parse(response.data));
+                } catch (e) {
+                  error({ status: response.status }, response.error);
+                }
+              } else {
+                secuses(response.data);
+              }
+            }, function (response) {
+              error({ status: response.status }, response.error);
+            });
+          }
+        } else {
+          // --- 有 Body 的 POST 请求 ---
+          if (!isJsonString) {
+            // 表单编码请求走 cordovaHTTP
+            var formObj = {};
+            requestContent.split('&').forEach(function (pair) {
+              var parts = pair.split('=');
+              if (parts[0]) {
+                formObj[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1] || '');
+              }
+            });
+
+            cordovaHTTP.post(url, formObj, headers, function (response) {
+              if (dataType === 'json') {
+                try {
+                  secuses(JSON.parse(response.data));
+                } catch (e) {
+                  error({ status: response.status }, response.error);
+                }
+              } else {
+                secuses(response.data);
+              }
+            }, function (response) {
+              error({ status: response.status }, response.error);
+            });
+          } else {
+            // JSON POST 走 cordovaFetch
+            executeFetch(url, 'POST', requestContent);
+          }
+        }
+
       } else {
         Android.httpReq(params, {
           complite: secuses,
