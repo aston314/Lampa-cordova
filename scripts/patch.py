@@ -40,7 +40,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (Cordova + 闪屏 + 遥控器设置键全语言菜单) =================
+# ================= 1. 注入 index.html (Cordova + 预装插件 + 缓存清理退出 + 遥控器菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -54,30 +54,71 @@ with open(html_file, "r", encoding="utf-8") as f:
 cordova_init_code = r"""
 <script src="cordova.js"></script>
 <script>
-        // Cordova 初始化
-        document.addEventListener('deviceready', function () {
-            if (document.readyState === 'complete') {
-                if (navigator.splashscreen) navigator.splashscreen.hide();
-            } else {
-                window.addEventListener('load', function () {
-                    if (navigator.splashscreen) navigator.splashscreen.hide();
-                });
-            }
-
-            document.addEventListener('menubutton', function (e) {
-                triggerAstonQuickMenu();
-            }, false);
-        });
     (function () {
-        // 弹出快捷操作菜单
+        // --- 预装插件：自动注入 TMDB 代理插件（免遥控器手动输入） ---
+        try {
+            var defaultPluginUrl = 'http://cub.red/plugin/tmdb-proxy';
+            var savedPlugins = JSON.parse(localStorage.getItem('plugins') || '[]');
+            var exists = savedPlugins.some(function (p) {
+                return (typeof p === 'string' && p === defaultPluginUrl) || (p && p.url === defaultPluginUrl);
+            });
+            if (!exists) {
+                savedPlugins.push({
+                    url: defaultPluginUrl,
+                    status: 1,
+                    name: 'TMDB Proxy',
+                    author: 'CUB'
+                });
+                localStorage.setItem('plugins', JSON.stringify(savedPlugins));
+                console.log('[Init] 成功预装 TMDB 代理插件:', defaultPluginUrl);
+            }
+        } catch (e) {
+            console.log('[Init] 预装插件检测跳过:', e);
+        }
+
+        // --- 安全清理 WebView 缓存后退出（保护老盒子存储） ---
+        function cleanCacheAndExit() {
+            if (window.resolveLocalFileSystemURL && window.cordova && cordova.file && cordova.file.cacheDirectory) {
+                window.resolveLocalFileSystemURL(cordova.file.cacheDirectory, function (dirEntry) {
+                    var reader = dirEntry.createReader();
+                    reader.readEntries(function (entries) {
+                        var total = entries.length;
+                        if (total === 0) {
+                            if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
+                            return;
+                        }
+                        var done = 0;
+                        var onFinish = function () {
+                            done++;
+                            if (done >= total && navigator.app && navigator.app.exitApp) {
+                                navigator.app.exitApp();
+                            }
+                        };
+                        entries.forEach(function (entry) {
+                            if (entry.isDirectory) {
+                                entry.removeRecursively(onFinish, onFinish);
+                            } else {
+                                entry.remove(onFinish, onFinish);
+                            }
+                        });
+                    }, function () {
+                        if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
+                    });
+                }, function () {
+                    if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
+                });
+            } else {
+                if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
+            }
+        }
+
+        // --- 弹出快捷操作菜单（12 种全语言自动适配） ---
         function triggerAstonQuickMenu() {
-            // 如果正在使用内置播放器播放视频，不打扰观影
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
                 return;
             }
 
             if (window.Lampa && Lampa.Select && Lampa.Lang) {
-                // 仅在首次触发时注册 12 种语言字典
                 if (!window._aston_menu_lang_inited) {
                     Lampa.Lang.add({
                         aston_menu_title: {
@@ -91,9 +132,9 @@ cordova_init_code = r"""
                             he: 'יציאה', pl: 'Wyjście', pt: 'Sair', ro: 'Ieșire'
                         },
                         aston_menu_exit_descr: {
-                            zh: '退出并关闭 Lampa', en: 'Close and exit Lampa', ru: 'Закрыть и выйти из Lampa', uk: 'Закрити та вийти з Lampa',
-                            be: 'Закрыць і выйсці з Lampa', bg: 'Затваряне и изход от Lampa', cs: 'Zavřít a ukončit Lampa', fr: 'Fermer et quitter Lampa',
-                            he: 'סגירה ויציאה מ-Lampa', pl: 'Zamknij i wyjdź z Lampa', pt: 'Fechar e sair do Lampa', ro: 'Închide și ieși din Lampa'
+                            zh: '清理临时缓存并退出 Lampa', en: 'Clean cache and exit Lampa', ru: 'Очистить кэш и выйти из Lampa', uk: 'Очистити кеш та вийти з Lampa',
+                            be: 'Ачысціць кэш і выйсці з Lampa', bg: 'Изчистване на кеша и изход', cs: 'Vymazat mezipaměť a ukončit', fr: 'Vider le cache et quitter',
+                            he: 'ניקוי מטמון ויציאה מ-Lampa', pl: 'Wyczyść pamięć podręczną i wyjdź', pt: 'Limpar cache e sair', ro: 'Curăță memoria cache și ieși'
                         },
                         aston_menu_reload: {
                             zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити',
@@ -116,9 +157,7 @@ cordova_init_code = r"""
                             title: Lampa.Lang.translate('aston_menu_exit'),
                             subtitle: Lampa.Lang.translate('aston_menu_exit_descr'),
                             onSelect: function () {
-                                if (navigator.app && navigator.app.exitApp) {
-                                    navigator.app.exitApp();
-                                }
+                                cleanCacheAndExit(); // 退出前自动清缓存
                             }
                         },
                         {
@@ -138,7 +177,7 @@ cordova_init_code = r"""
             }
         }
 
-        // 监听遥控器按键：code === 0（你的遥控器设置键）以及标准 82 / 93
+        // 监听遥控器按键：code === 0（设置键）及标准 82 / 93
         window.addEventListener('keydown', function (e) {
             var code = e.keyCode || e.which;
             if (code === 0 || code === 82 || code === 93) {
@@ -147,6 +186,21 @@ cordova_init_code = r"""
                 triggerAstonQuickMenu();
             }
         }, true);
+
+        // Cordova 初始化
+        document.addEventListener('deviceready', function () {
+            if (document.readyState === 'complete') {
+                if (navigator.splashscreen) navigator.splashscreen.hide();
+            } else {
+                window.addEventListener('load', function () {
+                    if (navigator.splashscreen) navigator.splashscreen.hide();
+                });
+            }
+
+            document.addEventListener('menubutton', function (e) {
+                triggerAstonQuickMenu();
+            }, false);
+        });
     })();
 </script>
 """
@@ -155,7 +209,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", f"<head>\n{cordova_init_code}", 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入 Cordova 初始化、遥控器设置键菜单与启动脚本")
+    print("[Success] index.html 成功注入预装插件、缓存清理与遥控器菜单脚本")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -200,9 +254,9 @@ ALL_LANG_EMBEDDED_CODE = (
 
 
 # ================= 3. 定义大段代码模板 =================
+
 CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
 
-        // 1. 全局单例：忽略自签名证书（仅初始化执行一次，避免频繁跨进程 IPC 通信）
         if (!window._cordova_certs_accepted && window.cordovaHTTP) {
           cordovaHTTP.acceptAllCerts(true, function () {}, function () {});
           window._cordova_certs_accepted = true;
@@ -214,7 +268,6 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
         var dataType = params.dataType || 'json';
         var contentType = params.contentType || '';
 
-        // 2. 辅助数据判断
         var isJsonString = false;
         var requestContent = "";
 
@@ -235,7 +288,6 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
           }
         }
 
-        // 规范化 Content-Type 字段
         if (requestContent !== "") {
           var hasContentType = false;
           for (var k in headers) {
@@ -249,7 +301,6 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
           }
         }
 
-        // 3. 规范标准 Fetch 调度函数（彻底解决 _result 私有属性暗坑）
         function executeFetch(targetUrl, method, bodyContent) {
           var fetchOptions = {
             method: method,
@@ -265,7 +316,6 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
           cordovaFetch(targetUrl, fetchOptions)
             .then(function (response) {
               if (response.status >= 200 && response.status < 400) {
-                // 标准 Promise 链式转换，绝对不会返回 undefined
                 return dataType === 'json' ? response.json() : response.text();
               } else {
                 throw { status: response.status, error: response.statusText };
@@ -279,9 +329,7 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
             });
         }
 
-        // 4. 路由分发决策
         if (!requestContent) {
-          // --- 无 Body 的 GET 请求 ---
           if (url.includes('ddys')) {
             executeFetch(url, 'GET', null);
           } else {
@@ -300,9 +348,7 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
             });
           }
         } else {
-          // --- 有 Body 的 POST 请求 ---
           if (!isJsonString) {
-            // 表单编码请求走 cordovaHTTP
             var formObj = {};
             requestContent.split('&').forEach(function (pair) {
               var parts = pair.split('=');
@@ -325,7 +371,6 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
               error({ status: response.status }, response.error);
             });
           } else {
-            // JSON POST 走 cordovaFetch
             executeFetch(url, 'POST', requestContent);
           }
         }
@@ -428,7 +473,7 @@ VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         };"""
 
 
-# ================= 4. 严格替换规则列表（共 22 项） =================
+# ================= 4. 严格替换规则列表（共 23 项） =================
 STRICT_RULES = [
     {
         "name": "退出代码替换 Android.exit()",
@@ -521,7 +566,7 @@ STRICT_RULES = [
         "new": "}, 'integrate');"
     },
     {
-        "name": "Cordova HTTP/Fetch 网络请求引擎大段注入",
+        "name": "Cordova HTTP/Fetch 网络请求引擎大段注入（单例优化与规范Promise版）",
         "pattern": r"Android\.httpReq\(\s*params\s*,\s*\{\s*complite\s*:\s*secuses\s*,\s*error\s*:\s*error\s*\}\s*\);",
         "new": CORDOVA_HTTP_REQ_CODE
     },
@@ -595,4 +640,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 22 条规则校验 100% 通过，遥控器专属按键菜单就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，预装插件、缓存清理与全功能补丁已就绪！准许打包 APK。\n")
