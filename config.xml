@@ -78,9 +78,10 @@
         <!-- 关联图标与横幅 -->
         <preference name="AndroidTVBanner" value="res/banner.png" />
         
-        <!-- 确保高版本安卓 100% 能加载 http:// 纯明文海报 -->
+        <!-- 确保高版本安卓 100% 能加载 http:// 纯明文海报
         <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
             <application android:usesCleartextTraffic="true" />
         </edit-config>
+        -->
     </platform>
 </widget>
