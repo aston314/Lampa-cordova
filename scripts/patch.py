@@ -601,6 +601,11 @@ STRICT_RULES = [
         "name": "默认关闭屏保 screensaver",
         "pattern": r"trigger\(\s*['\"]screensaver['\"]\s*,\s*true\s*\);",
         "new": "trigger('screensaver', false);"
+    },
+    {
+        "name": "强制本地加载 hls/dash/qrcode 核心解码库（免联网GitHub、秒开在线播放）",
+        "pattern": r"return\s+window\.location\.protocol\s*==\s*['\"]file:['\"]\s*\|\|\s*window\.location\.href\.indexOf\(['\"]chrome-extension['\"]\)\s*>\s*-1\s*\?\s*object\$2\.github_lampa\s*\+\s*['\"]vender/['\"]\s*\+\s*lib\s*:\s*['\"]\./vender/['\"]\s*\+\s*lib;",
+        "new": "return './vender/' + lib;"
     }
 ]
 
