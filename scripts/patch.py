@@ -40,7 +40,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (Cordova + 预装插件 + 缓存清理退出 + 遥控器菜单) =================
+# ================= 1. 注入 index.html (Cordova + 预装 tmdb-proxy + 防盗链 + 缓存清理 + 菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -51,11 +51,13 @@ if not os.path.exists(html_file):
 with open(html_file, "r", encoding="utf-8") as f:
     html_content = f.read()
 
+# 包含防盗链 meta 标签、预装插件、缓存清理与遥控器菜单
 cordova_init_code = r"""
+<meta name="referrer" content="no-referrer" />
 <script src="cordova.js"></script>
 <script>
     (function () {
-        // --- 预装插件：自动注入 TMDB 代理插件（免遥控器手动输入） ---
+        // --- 预装插件：自动注入 TMDB 代理插件（保留预装） ---
         try {
             var defaultPluginUrl = 'http://cub.red/plugin/tmdb-proxy';
             var savedPlugins = JSON.parse(localStorage.getItem('plugins') || '[]');
@@ -139,7 +141,7 @@ cordova_init_code = r"""
                         aston_menu_reload: {
                             zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити',
                             be: 'Перазагрузіць', bg: 'Презареждане', cs: 'Znovu načíst', fr: 'Recharger',
-                            he: 'טעינה מחדש', pl: 'Przeładuj', pt: 'Recarregar', ro: 'Reîncărcare'
+                            he: 'טעינה מחדш', pl: 'Przeładuj', pt: 'Recarregar', ro: 'Reîncărcare'
                         },
                         aston_menu_reload_descr: {
                             zh: '刷新当前界面与数据', en: 'Refresh interface and data', ru: 'Обновить интерфейс и данные', uk: 'Оновити інтерфейс та дані',
@@ -157,7 +159,7 @@ cordova_init_code = r"""
                             title: Lampa.Lang.translate('aston_menu_exit'),
                             subtitle: Lampa.Lang.translate('aston_menu_exit_descr'),
                             onSelect: function () {
-                                cleanCacheAndExit(); // 退出前自动清缓存
+                                cleanCacheAndExit();
                             }
                         },
                         {
@@ -209,7 +211,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", f"<head>\n{cordova_init_code}", 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入预装插件、缓存清理与遥控器菜单脚本")
+    print("[Success] index.html 成功注入防盗链穿透、预装 tmdb-proxy 与全功能脚本")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -640,4 +642,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 23 条规则校验 100% 通过，预装插件、缓存清理与全功能补丁已就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，防盗链穿透与插件就绪！准许打包 APK。\n")
