@@ -202,7 +202,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. 自动将最新构建信息以标准英文更新至 README.md
+      # 9. 自动将自身构建信息 + 其他相关仓库的 Release 汇总更新至 README.md
       - name: Update README with Latest Build Info
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
@@ -210,10 +210,13 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
           UPSTREAM_SHA: ${{ steps.check_upstream.outputs.latest_sha }}
           REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 -c "
-          import os, re
+          import os, re, json, urllib.request
+          from datetime import datetime, timezone, timedelta
 
+          # ================= 1. 更新本仓库构建信息 =================
           version = f\"v{os.environ['APP_VERSION']} (Build {os.environ['RUN_NUMBER']})\"
           sha = os.environ['UPSTREAM_SHA']
           short_sha = sha[:7] if sha and sha != 'null' else 'unknown'
@@ -222,7 +225,7 @@ jobs:
           download_url = f\"https://github.com/{repo}/releases/download/v{os.environ['APP_VERSION']}-b{os.environ['RUN_NUMBER']}/{apk_name}\"
           build_date = os.popen(\"TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M (UTC+8)'\").read().strip()
 
-          lines = [
+          my_block = '\n'.join([
               '<!-- LATEST_BUILD_INFO_START -->',
               '### 🚀 Latest Automated Build',
               f'- **App Version**: \`{version}\`',
@@ -230,20 +233,83 @@ jobs:
               f'- **Upstream Source**: [{short_sha}](https://github.com/yumata/lampa/commit/{sha})',
               f'- **Direct Download**: [📦 {apk_name}]({download_url})',
               '<!-- LATEST_BUILD_INFO_END -->'
-          ]
-          new_block = '\n'.join(lines)
+          ])
 
+          # ================= 2. 抓取其他相关仓库的 Release 信息 =================
+          # 在这里配置你想汇总的其他 Lampa 仓库列表（owner/repo 格式）
+          RELATED_REPOS = [
+              'lampa-app/LAMPA',
+              # 如果有其他仓库，直接在此追加，例如：'other-user/lampa-client',
+          ]
+
+          tz_cst = timezone(timedelta(hours=8))
+          related_sections = [
+              '<!-- RELATED_RELEASES_START -->',
+              '### 🌐 Related Lampa Community Builds'
+          ]
+
+          for target in RELATED_REPOS:
+              api_url = f'https://api.github.com/repos/{target}/releases/latest'
+              req = urllib.request.Request(api_url)
+              req.add_header('Authorization', f'Bearer {os.environ[\"GH_TOKEN\"]}')
+              req.add_header('User-Agent', 'GitHub-Actions-Script')
+              req.add_header('Accept', 'application/vnd.github.v3+json')
+
+              try:
+                  with urllib.request.urlopen(req, timeout=10) as response:
+                      data = json.loads(response.read().decode('utf-8'))
+                      tag = data.get('tag_name', 'unknown')
+                      rel_name = data.get('name') or tag
+                      html_url = data.get('html_url', f'https://github.com/{target}/releases')
+                      
+                      # 格式化发布时间为北京时间 (UTC+8)
+                      pub_at = data.get('published_at', '')
+                      if pub_at:
+                          dt = datetime.fromisoformat(pub_at.replace('Z', '+00:00')).astimezone(tz_cst)
+                          date_str = dt.strftime('%Y-%m-%d %H:%M (UTC+8)')
+                      else:
+                          date_str = 'N/A'
+
+                      # 寻找 .apk 附件
+                      apk_links = []
+                      for asset in data.get('assets', []):
+                          name = asset.get('name', '')
+                          if name.endswith('.apk'):
+                              dl_url = asset.get('browser_download_url', '')
+                              apk_links.append(f'[📦 {name}]({dl_url})')
+
+                      download_text = ' / '.join(apk_links) if apk_links else f'[View Assets]({html_url})'
+
+                      related_sections.append(f'\n#### 📦 [{target}](https://github.com/{target})')
+                      related_sections.append(f'- **App Version**: \`{tag}\` ({rel_name})')
+                      related_sections.append(f'- **Release Date**: \`{date_str}\`')
+                      related_sections.append(f'- **Release Notes**: [View Details]({html_url})')
+                      related_sections.append(f'- **Direct Download**: {download_text}')
+                      print(f'[Success] 已获取相关仓库信息: {target} ({tag})')
+              except Exception as e:
+                  print(f'[Warning] 抓取 {target} 失败 (可能无 Release 或网络错误): {e}')
+
+          related_sections.append('<!-- RELATED_RELEASES_END -->')
+          related_block = '\n'.join(related_sections)
+
+          # ================= 3. 写入 README.md =================
           if os.path.exists('README.md'):
               with open('README.md', 'r', encoding='utf-8') as f:
                   content = f.read()
-              pattern = r'<!-- LATEST_BUILD_INFO_START -->[\s\S]*?<!-- LATEST_BUILD_INFO_END -->'
-              if re.search(pattern, content):
-                  content = re.sub(pattern, new_block, content)
-                  with open('README.md', 'w', encoding='utf-8') as f:
-                      f.write(content)
-                  print('[Success] README.md updated successfully.')
-              else:
-                  print('[Warning] Markers not found in README.md.')
+
+              # 替换本仓库信息
+              my_pattern = r'<!-- LATEST_BUILD_INFO_START -->[\s\S]*?<!-- LATEST_BUILD_INFO_END -->'
+              if re.search(my_pattern, content):
+                  content = re.sub(my_pattern, my_block, content)
+
+              # 替换其他仓库聚合信息
+              rel_pattern = r'<!-- RELATED_RELEASES_START -->[\s\S]*?<!-- RELATED_RELEASES_END -->'
+              if re.search(rel_pattern, content):
+                  content = re.sub(rel_pattern, related_block, content)
+
+              with open('README.md', 'w', encoding='utf-8') as f:
+                  f.write(content)
+              print('[Success] README.md 自身构建与相关仓库聚合信息已全部更新！')
           "
 
       # 10. 一并提交 .last_commit 与 README.md 推回仓库
