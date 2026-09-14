@@ -202,7 +202,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. 自动将最新构建信息更新至 README.md 并生成 version.json（提供双通道下载链接）
+      # 9. 自动将最新构建信息更新至 README.md 并生成 version.json（已加入 lampa-app/LAMPA）
       - name: Update README and Generate version.json
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
@@ -224,14 +224,11 @@ jobs:
           short_sha = sha[:7] if sha and sha != 'null' else 'unknown'
           apk_name = f\"lampa-v{os.environ['APP_VERSION']}-b{run_num}.apk\"
           
-          # 1. 官方原生直链（供海外/非中文用户）
           direct_url = f\"https://github.com/{repo}/releases/download/{version_tag}-b{run_num}/{apk_name}\"
-          # 2. 国内加速镜像直链（仅供中文用户极速下载）
           mirror_url = f\"https://ghfast.top/{direct_url}\"
-          
           build_date = os.popen(\"TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M (UTC+8)'\").read().strip()
 
-          # --- 生成供应用内检测的双通道 version.json ---
+          # --- 1. 生成双通道 version.json ---
           ver_data = {
               'version': version_tag,
               'versionCode': run_num,
@@ -243,9 +240,8 @@ jobs:
           }
           with open('version.json', 'w', encoding='utf-8') as f:
               json.dump(ver_data, f, indent=2, ensure_ascii=False)
-          print('[Success] 双通道 version.json 生成就绪！')
 
-          # --- 更新 README.md 本地构建信息 ---
+          # --- 2. 自身构建信息 ---
           my_block = '\n'.join([
               '<!-- LATEST_BUILD_INFO_START -->',
               '### 🚀 Latest Automated Build',
@@ -256,8 +252,10 @@ jobs:
               '<!-- LATEST_BUILD_INFO_END -->'
           ])
 
-          # --- 聚合其他同类仓库 ---
-          RELATED_REPOS = ['lampa-app/LAMPA']
+          # --- 3. 抓取并聚合目标仓库（包含 lampa-app/LAMPA） ---
+          RELATED_REPOS = [
+              'lampa-app/LAMPA'
+          ]
           tz_cst = timezone(timedelta(hours=8))
           related_sections = ['<!-- RELATED_RELEASES_START -->', '### 🌐 Related Lampa Community Builds']
 
@@ -281,7 +279,10 @@ jobs:
                       related_sections.append(f'\n#### 📦 [{target}](https://github.com/{target})')
                       related_sections.append(f'- **App Version**: \`{tag}\` ({rel_name})')
                       related_sections.append(f'- **Release Date**: \`{date_str}\`')
+                      # 恢复你之前需要的 Release Notes 直链：
+                      related_sections.append(f'- **Release Notes**: [View Details]({html_url})')
                       related_sections.append(f'- **Direct Download**: {download_text}')
+                      print(f'[Success] 已抓取 {target} 最新 Release: {tag}')
               except Exception as e:
                   print(f'[Warning] 抓取 {target} 失败: {e}')
 
@@ -297,7 +298,7 @@ jobs:
                   content = re.sub(r'<!-- RELATED_RELEASES_START -->[\s\S]*?<!-- RELATED_RELEASES_END -->', related_block, content)
               with open('README.md', 'w', encoding='utf-8') as f:
                   f.write(content)
-              print('[Success] README.md 更新完成！')
+              print('[Success] README.md 更新完成，已包含 lampa-app/LAMPA 的 Release Notes！')
           "
 
       # 10. 一并提交 .last_commit 与 README.md 推回仓库
