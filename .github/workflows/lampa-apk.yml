@@ -202,8 +202,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. 自动将自身构建信息 + 其他相关仓库的 Release 汇总更新至 README.md
-      - name: Update README with Latest Build Info
+      # 9. 自动将最新构建信息更新至 README.md 并生成 version.json（提供双通道下载链接）
+      - name: Update README and Generate version.json
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
           APP_VERSION: ${{ env.APP_VERSION }}
@@ -216,37 +216,50 @@ jobs:
           import os, re, json, urllib.request
           from datetime import datetime, timezone, timedelta
 
-          # ================= 1. 更新本仓库构建信息 =================
-          version = f\"v{os.environ['APP_VERSION']} (Build {os.environ['RUN_NUMBER']})\"
+          repo = os.environ['REPO']
+          run_num = int(os.environ['RUN_NUMBER'])
+          version_tag = f\"v{os.environ['APP_VERSION']}\"
+          version = f\"{version_tag} (Build {run_num})\"
           sha = os.environ['UPSTREAM_SHA']
           short_sha = sha[:7] if sha and sha != 'null' else 'unknown'
-          repo = os.environ['REPO']
-          apk_name = f\"lampa-v{os.environ['APP_VERSION']}-b{os.environ['RUN_NUMBER']}.apk\"
-          download_url = f\"https://github.com/{repo}/releases/download/v{os.environ['APP_VERSION']}-b{os.environ['RUN_NUMBER']}/{apk_name}\"
+          apk_name = f\"lampa-v{os.environ['APP_VERSION']}-b{run_num}.apk\"
+          
+          # 1. 官方原生直链（供海外/非中文用户）
+          direct_url = f\"https://github.com/{repo}/releases/download/{version_tag}-b{run_num}/{apk_name}\"
+          # 2. 国内加速镜像直链（仅供中文用户极速下载）
+          mirror_url = f\"https://ghfast.top/{direct_url}\"
+          
           build_date = os.popen(\"TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M (UTC+8)'\").read().strip()
 
+          # --- 生成供应用内检测的双通道 version.json ---
+          ver_data = {
+              'version': version_tag,
+              'versionCode': run_num,
+              'apk_name': apk_name,
+              'direct_url': direct_url,
+              'mirror_url': mirror_url,
+              'build_date': build_date,
+              'upstream_sha': short_sha
+          }
+          with open('version.json', 'w', encoding='utf-8') as f:
+              json.dump(ver_data, f, indent=2, ensure_ascii=False)
+          print('[Success] 双通道 version.json 生成就绪！')
+
+          # --- 更新 README.md 本地构建信息 ---
           my_block = '\n'.join([
               '<!-- LATEST_BUILD_INFO_START -->',
               '### 🚀 Latest Automated Build',
               f'- **App Version**: \`{version}\`',
               f'- **Build Date**: \`{build_date}\`',
               f'- **Upstream Source**: [{short_sha}](https://github.com/yumata/lampa/commit/{sha})',
-              f'- **Direct Download**: [📦 {apk_name}]({download_url})',
+              f'- **Direct Download**: [📦 {apk_name}]({direct_url})',
               '<!-- LATEST_BUILD_INFO_END -->'
           ])
 
-          # ================= 2. 抓取其他相关仓库的 Release 信息 =================
-          # 在这里配置你想汇总的其他 Lampa 仓库列表（owner/repo 格式）
-          RELATED_REPOS = [
-              'lampa-app/LAMPA',
-              # 如果有其他仓库，直接在此追加，例如：'other-user/lampa-client',
-          ]
-
+          # --- 聚合其他同类仓库 ---
+          RELATED_REPOS = ['lampa-app/LAMPA']
           tz_cst = timezone(timedelta(hours=8))
-          related_sections = [
-              '<!-- RELATED_RELEASES_START -->',
-              '### 🌐 Related Lampa Community Builds'
-          ]
+          related_sections = ['<!-- RELATED_RELEASES_START -->', '### 🌐 Related Lampa Community Builds']
 
           for target in RELATED_REPOS:
               api_url = f'https://api.github.com/repos/{target}/releases/latest'
@@ -254,62 +267,37 @@ jobs:
               req.add_header('Authorization', f'Bearer {os.environ[\"GH_TOKEN\"]}')
               req.add_header('User-Agent', 'GitHub-Actions-Script')
               req.add_header('Accept', 'application/vnd.github.v3+json')
-
               try:
                   with urllib.request.urlopen(req, timeout=10) as response:
                       data = json.loads(response.read().decode('utf-8'))
                       tag = data.get('tag_name', 'unknown')
                       rel_name = data.get('name') or tag
                       html_url = data.get('html_url', f'https://github.com/{target}/releases')
-                      
-                      # 格式化发布时间为北京时间 (UTC+8)
                       pub_at = data.get('published_at', '')
-                      if pub_at:
-                          dt = datetime.fromisoformat(pub_at.replace('Z', '+00:00')).astimezone(tz_cst)
-                          date_str = dt.strftime('%Y-%m-%d %H:%M (UTC+8)')
-                      else:
-                          date_str = 'N/A'
-
-                      # 寻找 .apk 附件
-                      apk_links = []
-                      for asset in data.get('assets', []):
-                          name = asset.get('name', '')
-                          if name.endswith('.apk'):
-                              dl_url = asset.get('browser_download_url', '')
-                              apk_links.append(f'[📦 {name}]({dl_url})')
-
+                      date_str = datetime.fromisoformat(pub_at.replace('Z', '+00:00')).astimezone(tz_cst).strftime('%Y-%m-%d %H:%M (UTC+8)') if pub_at else 'N/A'
+                      apk_links = [f\"[📦 {a['name']}]({a['browser_download_url']})\" for a in data.get('assets', []) if a.get('name', '').endswith('.apk')]
                       download_text = ' / '.join(apk_links) if apk_links else f'[View Assets]({html_url})'
 
                       related_sections.append(f'\n#### 📦 [{target}](https://github.com/{target})')
                       related_sections.append(f'- **App Version**: \`{tag}\` ({rel_name})')
                       related_sections.append(f'- **Release Date**: \`{date_str}\`')
-                      related_sections.append(f'- **Release Notes**: [View Details]({html_url})')
                       related_sections.append(f'- **Direct Download**: {download_text}')
-                      print(f'[Success] 已获取相关仓库信息: {target} ({tag})')
               except Exception as e:
-                  print(f'[Warning] 抓取 {target} 失败 (可能无 Release 或网络错误): {e}')
+                  print(f'[Warning] 抓取 {target} 失败: {e}')
 
           related_sections.append('<!-- RELATED_RELEASES_END -->')
           related_block = '\n'.join(related_sections)
 
-          # ================= 3. 写入 README.md =================
           if os.path.exists('README.md'):
               with open('README.md', 'r', encoding='utf-8') as f:
                   content = f.read()
-
-              # 替换本仓库信息
-              my_pattern = r'<!-- LATEST_BUILD_INFO_START -->[\s\S]*?<!-- LATEST_BUILD_INFO_END -->'
-              if re.search(my_pattern, content):
-                  content = re.sub(my_pattern, my_block, content)
-
-              # 替换其他仓库聚合信息
-              rel_pattern = r'<!-- RELATED_RELEASES_START -->[\s\S]*?<!-- RELATED_RELEASES_END -->'
-              if re.search(rel_pattern, content):
-                  content = re.sub(rel_pattern, related_block, content)
-
+              if re.search(r'<!-- LATEST_BUILD_INFO_START -->[\s\S]*?<!-- LATEST_BUILD_INFO_END -->', content):
+                  content = re.sub(r'<!-- LATEST_BUILD_INFO_START -->[\s\S]*?<!-- LATEST_BUILD_INFO_END -->', my_block, content)
+              if re.search(r'<!-- RELATED_RELEASES_START -->[\s\S]*?<!-- RELATED_RELEASES_END -->', content):
+                  content = re.sub(r'<!-- RELATED_RELEASES_START -->[\s\S]*?<!-- RELATED_RELEASES_END -->', related_block, content)
               with open('README.md', 'w', encoding='utf-8') as f:
                   f.write(content)
-              print('[Success] README.md 自身构建与相关仓库聚合信息已全部更新！')
+              print('[Success] README.md 更新完成！')
           "
 
       # 10. 一并提交 .last_commit 与 README.md 推回仓库
