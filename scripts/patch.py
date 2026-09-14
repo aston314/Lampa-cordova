@@ -414,10 +414,20 @@ cordova_init_template = r"""
                 triggerAstonQuickMenu();
             }, false);
 
-            // 开机 3 秒后静默检测更新
+            // 智能感知就绪：等待老盒子将 Lampa 核心主页彻底渲染完毕后，再触发更新检测
+            var bootCheckTimer = setInterval(function () {
+                if (window.Lampa && Lampa.Select && Lampa.Activity && Lampa.Controller) {
+                    clearInterval(bootCheckTimer); // 核心组件已就绪，停止探测
+                    setTimeout(function () {
+                        checkLampaUpdate(false);  // 缓冲 2 秒后稳妥弹出！
+                    }, 2000);
+                }
+            }, 500);
+
+            // 超过 30 秒保护超时，防止极端情况卡死探测器
             setTimeout(function () {
-                checkLampaUpdate(false);
-            }, 3000);
+                clearInterval(bootCheckTimer);
+            }, 30000);
         });
     })();
 </script>
