@@ -4,10 +4,10 @@
 
 <!-- LATEST_BUILD_INFO_START -->
 ### 🚀 Latest Automated Build
-- **App Version**: `v3.3.3.62`
-- **Build Date**: `2026-09-14 19:16 (UTC+8)`
+- **App Version**: `v3.3.3.63`
+- **Build Date**: `2026-09-14 19:44 (UTC+8)`
 - **Upstream Source**: [0f50f0c](https://github.com/yumata/lampa/commit/0f50f0c4cb3f602ecaff84925dca07f96bbd38a8)
-- **Direct Download**: [📦 lampa-v3.3.3.62.apk](https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.62/lampa-v3.3.3.62.apk)
+- **Direct Download**: [📦 lampa-v3.3.3.63.apk](https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.63/lampa-v3.3.3.63.apk)
 <!-- LATEST_BUILD_INFO_END -->
 
 <!-- RELATED_RELEASES_START -->
@@ -18,12 +18,6 @@
 - **Release Date**: `2026-09-13 22:43 (UTC+8)`
 - **Release Notes**: [View Details](https://github.com/lampa-app/LAMPA/releases/tag/v1.13.1)
 - **Direct Download**: [📦 app-lite-release.apk](https://github.com/lampa-app/LAMPA/releases/download/v1.13.1/app-lite-release.apk)
-
-#### 📦 [yourok/torrserver](https://github.com/yourok/torrserver)
-- **App Version**: `MatriX.144.5` (MatriX.144.5)
-- **Release Date**: `2026-09-13 23:05 (UTC+8)`
-- **Release Notes**: [View Details](https://github.com/YouROK/TorrServer/releases/tag/MatriX.144.5)
-- **Direct Download**: [View Assets](https://github.com/YouROK/TorrServer/releases/tag/MatriX.144.5)
 <!-- RELATED_RELEASES_END -->
 
 ---
