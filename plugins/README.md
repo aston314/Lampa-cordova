@@ -2,7 +2,7 @@
 
 Lampa plugins collection.
 
-本项目用于存放适用于 **Lampa** 的 JavaScript 插件。所有插件均以 `.js` 文件形式提供，并遵循 Lampa 插件的基本编写规范。
+本目录用于存放适用于 **Lampa** 的 JavaScript 插件。所有插件均以 `.js` 文件形式提供，并遵循 Lampa 插件的基本编写规范。
 
 ---
 
