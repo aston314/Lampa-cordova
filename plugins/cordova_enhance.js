@@ -1,6 +1,8 @@
 (function () {
     'use strict';
 
+    console.log('================ 真正的 AUTO_UPDATE 插件执行了！ ================');
+
     // 动态获取最新常量（杜绝过早固化为 1 的问题）
     function getBuildCode() {
         return window.CURRENT_BUILD_CODE || 1;
