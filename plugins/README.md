@@ -23,17 +23,44 @@ Lampa plugins collection.
 
 这是一个用于存放 **Lampa JavaScript 插件**的插件仓库。
 
-插件主要用于扩展 Lampa 的功能，例如：
+本项目中的插件会由 **Cordova** 在构建 Lampa 本地版本时自动打包，并作为 Lampa 的本地插件运行。
 
-* 添加或扩展影视资源源
-* 增加视频解析功能
-* 添加直播源
-* 扩展播放器功能
-* 添加字幕相关功能
-* 修改或增强 Lampa 的界面功能
-* 增加其他 Lampa 可扩展功能
+所有插件文件必须放置在项目的 `plugins/` 目录中。
 
-所有插件均为 JavaScript 文件，并且必须以 `.js` 结尾。
+### 插件目录
+
+插件统一存放于：
+
+```text
+plugins/
+```
+
+例如：
+
+```text
+.
+├── README.md
+├── LICENSE
+└── plugins/
+    ├── torrentio.js
+    ├── live-sports.js
+    ├── subtitle.js
+    └── video-parser.js
+```
+
+**`.js` 插件文件不能直接放在项目根目录。**
+
+### 自动打包
+
+Cordova 构建项目时，会自动读取 `plugins/` 目录中的所有 `.js` 文件，并将这些文件打包到 Lampa 本地版本中。
+
+因此：
+
+* `plugins/` 目录下的 `.js` 文件会自动被打包。
+* 不需要单独注册每一个插件。
+* 不需要手动添加插件 URL。
+* 打包完成后，插件作为 Lampa 本地插件运行。
+* `plugins/` 中的非 `.js` 文件不会作为插件加载。
 
 ### 插件要求
 
@@ -42,13 +69,14 @@ Lampa plugins collection.
 基本要求：
 
 1. 插件文件必须使用 `.js` 扩展名。
-2. 插件应能够直接通过 Lampa 的插件机制加载。
-3. 插件代码应尽量避免污染全局命名空间。
-4. 插件应使用 Lampa 提供的 API 和扩展机制。
-5. 不应修改与插件功能无关的 Lampa 核心代码。
-6. 插件应尽可能兼容当前版本的 Lampa。
-7. 插件中使用的第三方依赖应明确说明。
-8. 插件名称、版本及主要功能应在代码中清晰定义。
+2. 所有插件必须放在 `plugins/` 目录中。
+3. 插件应能够通过 Lampa 的插件机制正常加载。
+4. 插件代码应尽量避免污染全局命名空间。
+5. 插件应使用 Lampa 提供的 API 和扩展机制。
+6. 不应修改与插件功能无关的 Lampa 核心代码。
+7. 插件应尽可能兼容当前版本的 Lampa。
+8. 插件中使用的第三方依赖应明确说明。
+9. 插件名称、版本及主要功能应在代码中清晰定义。
 
 ### 推荐的插件结构
 
@@ -97,79 +125,134 @@ Lampa plugins collection.
 
 ### 文件命名
 
-插件文件必须以 `.js` 结尾。
+插件文件必须以 `.js` 结尾，并且必须放置在 `plugins/` 目录中。
 
-推荐使用具有明确含义的文件名：
+推荐：
 
 ```text
-plugin-name.js
-torrentio.js
-live-sports.js
-subtitle.js
-video-parser.js
+plugins/
+├── torrentio.js
+├── live-sports.js
+├── subtitle.js
+└── video-parser.js
 ```
 
-不推荐使用：
+不推荐：
 
 ```text
-plugin
-plugin.txt
-plugin.json
-plugin.md
+torrentio
+torrentio.txt
+torrentio.json
+torrentio.md
+```
+
+也不要将插件直接放在项目根目录：
+
+```text
+./torrentio.js
+./live-sports.js
 ```
 
 ### 安装
 
-在 Lampa 中打开插件设置，并添加插件 JavaScript 文件对应的地址。
+本项目用于 **Lampa Cordova 本地版本**。
+
+无需通过 Lampa 在线插件地址逐个安装插件。
+
+只需要将插件 `.js` 文件放入：
+
+```text
+plugins/
+```
+
+目录。
+
+在 Cordova 构建 Lampa 时，`plugins/` 目录中的所有 `.js` 文件会自动被打包到本地版本。
+
+因此，安装插件的过程实际上就是将对应的 `.js` 文件放入 `plugins/` 目录，然后重新构建 Lampa。
+
+### 更新插件
+
+更新插件时，不需要修改其他配置。
+
+只需要将对应插件的新 `.js` 文件放入：
+
+```text
+plugins/
+```
+
+目录，并替换原来的插件文件。
+
+例如原来：
+
+```text
+plugins/
+└── torrentio.js
+```
+
+更新后仍然使用：
+
+```text
+plugins/
+└── torrentio.js
+```
+
+直接用新的 `torrentio.js` 替换旧文件即可。
+
+然后重新进行 Cordova 构建，新版本插件就会被自动打包到 Lampa 本地版本中。
+
+### 添加新插件
+
+如果需要添加新的 Lampa 插件，只需要在 `plugins/` 目录中增加新的 `.js` 文件。
 
 例如：
 
 ```text
-https://example.com/lampa/plugin-name.js
-```
-
-然后根据 Lampa 的插件管理功能加载插件。
-
-### 更新
-
-插件更新后，只需要保持原来的 `.js` 地址不变，并更新插件文件内容即可。
-
-建议在插件内部维护版本号，例如：
-
-```javascript
-version: '1.2.0'
-```
-
-### 目录结构
-
-推荐的项目结构：
-
-```text
-.
-├── README.md
-├── plugins/
-│   ├── plugin-name.js
-│   ├── torrentio.js
-│   ├── live-sports.js
-│   └── subtitle.js
-└── LICENSE
-```
-
-如果项目规模较小，也可以直接将 `.js` 插件文件放在根目录：
-
-```text
-.
-├── README.md
+plugins/
 ├── torrentio.js
 ├── live-sports.js
-└── subtitle.js
+├── subtitle.js
+├── video-parser.js
+└── new-plugin.js
 ```
+
+重新构建后，新的 `new-plugin.js` 会自动被打包。
+
+### 删除插件
+
+如果需要删除插件，只需要从 `plugins/` 目录删除对应的 `.js` 文件。
+
+例如删除：
+
+```text
+plugins/
+└── torrentio.js
+```
+
+重新构建后，该插件将不会再被打包到 Lampa 本地版本。
+
+### 项目结构
+
+标准项目结构如下：
+
+```text
+.
+├── README.md
+├── LICENSE
+└── plugins/
+    ├── plugin-name.js
+    ├── torrentio.js
+    ├── live-sports.js
+    └── subtitle.js
+```
+
+**项目根目录只用于存放项目文件，Lampa 插件 `.js` 文件统一存放在 `plugins/` 目录。**
 
 ### 注意事项
 
-本项目中的插件仅用于扩展 Lampa 功能。
+本项目中的插件用于扩展 Lampa 的功能。
 
-第三方网站、API、视频源、字幕源等内容的可用性由对应服务提供方决定。
+插件所依赖的第三方网站、API、视频源、直播源、字幕源等内容，其可用性由对应服务提供方决定。
 
 使用插件时，请遵守所在国家或地区的法律法规，以及相关网站和服务的使用条款。
 
@@ -183,17 +266,44 @@ version: '1.2.0'
 
 This repository contains **JavaScript plugins for Lampa**.
 
-The plugins are designed to extend Lampa with additional functionality, such as:
+The plugins are automatically packaged by **Cordova** when building the local Lampa version and are then loaded as local Lampa plugins.
 
-* Additional movie and TV sources
-* Video parsers
-* Live streaming sources
-* Player extensions
-* Subtitle-related features
-* UI enhancements
-* Other Lampa-compatible extensions
+All plugin files must be placed in the `plugins/` directory.
 
-All plugins are distributed as JavaScript files and must use the `.js` extension.
+### Plugin Directory
+
+All plugins must be stored in:
+
+```text
+plugins/
+```
+
+Example:
+
+```text
+.
+├── README.md
+├── LICENSE
+└── plugins/
+    ├── torrentio.js
+    ├── live-sports.js
+    ├── subtitle.js
+    └── video-parser.js
+```
+
+**Plugin `.js` files must not be placed in the repository root.**
+
+### Automatic Packaging
+
+When the Cordova project is built, all `.js` files inside the `plugins/` directory are automatically included in the local Lampa build.
+
+Therefore:
+
+* All `.js` files inside `plugins/` are automatically packaged.
+* No individual plugin registration is required.
+* No plugin URL needs to be added manually.
+* Plugins run as local Lampa plugins after packaging.
+* Non-JavaScript files inside `plugins/` are not loaded as plugins.
 
 ### Plugin Requirements
 
@@ -202,13 +312,14 @@ Plugins should follow the Lampa plugin architecture and JavaScript conventions.
 General requirements:
 
 1. Plugin files must use the `.js` extension.
-2. Plugins should be loadable through Lampa's plugin mechanism.
-3. Avoid unnecessary global variables.
-4. Use Lampa APIs and extension mechanisms whenever possible.
-5. Do not modify unrelated Lampa core functionality.
-6. Maintain compatibility with current Lampa versions whenever possible.
-7. Clearly document third-party dependencies.
-8. Plugin name, version and main functionality should be clearly defined.
+2. All plugins must be placed inside `plugins/`.
+3. Plugins should load correctly through the Lampa plugin mechanism.
+4. Avoid unnecessary global variables.
+5. Use Lampa APIs and extension mechanisms whenever possible.
+6. Do not modify unrelated Lampa core functionality.
+7. Maintain compatibility with current Lampa versions whenever possible.
+8. Clearly document third-party dependencies.
+9. Plugin name, version and main functionality should be clearly defined.
 
 ### Recommended Structure
 
@@ -228,54 +339,74 @@ A basic plugin can follow this structure:
 })();
 ```
 
-If the plugin requires Lampa APIs, initialize it according to the Lampa plugin architecture.
-
-### File Naming
-
-Plugin files must end with `.js`.
-
-Recommended:
-
-```text
-plugin-name.js
-torrentio.js
-live-sports.js
-subtitle.js
-video-parser.js
-```
-
 ### Installation
 
-Add the URL of the plugin JavaScript file through Lampa's plugin settings.
+This repository is intended for the **local Lampa Cordova build**.
 
-Example:
+Plugins do not need to be installed individually through Lampa's online plugin URL system.
+
+Simply place the plugin `.js` file inside:
 
 ```text
-https://example.com/lampa/plugin-name.js
+plugins/
 ```
 
-Then load the plugin using Lampa's plugin management functionality.
+When Cordova builds Lampa, all `.js` files in this directory are automatically packaged into the local Lampa version.
+
+### Updating Plugins
+
+To update a plugin, simply place the new `.js` file in the `plugins/` directory and replace the existing file.
+
+For example:
+
+```text
+plugins/
+└── torrentio.js
+```
+
+Replace the existing `torrentio.js` with the new version and rebuild the Cordova project.
+
+The updated plugin will then be automatically included in the local Lampa build.
+
+### Adding a New Plugin
+
+To add a new plugin, simply add a new `.js` file to the `plugins/` directory:
+
+```text
+plugins/
+├── torrentio.js
+├── live-sports.js
+├── subtitle.js
+├── video-parser.js
+└── new-plugin.js
+```
+
+The new plugin will be automatically packaged during the next build.
+
+### Removing a Plugin
+
+To remove a plugin, delete its `.js` file from the `plugins/` directory.
+
+After rebuilding the project, the removed plugin will no longer be included.
 
 ### Project Structure
-
-Recommended:
 
 ```text
 .
 ├── README.md
-├── plugins/
-│   ├── plugin-name.js
-│   ├── torrentio.js
-│   ├── live-sports.js
-│   └── subtitle.js
-└── LICENSE
+├── LICENSE
+└── plugins/
+    ├── plugin-name.js
+    ├── torrentio.js
+    ├── live-sports.js
+    └── subtitle.js
 ```
 
-For smaller projects, plugin files can also be placed directly in the repository root.
+**The repository root is reserved for project files. All Lampa plugin `.js` files must be stored in `plugins/`.**
 
 ### Disclaimer
 
-The availability of third-party websites, APIs, video sources and subtitle sources depends on their respective providers.
+The availability of third-party websites, APIs, video sources, live streams and subtitle sources depends on their respective providers.
 
 Users are responsible for complying with applicable laws, regulations and service terms.
 
@@ -289,101 +420,131 @@ Users are responsible for complying with applicable laws, regulations and servic
 
 Этот репозиторий содержит **JavaScript-плагины для Lampa**.
 
-Плагины предназначены для расширения возможностей Lampa, включая:
+При сборке локальной версии Lampa с помощью **Cordova** все плагины автоматически включаются в сборку и работают как локальные плагины Lampa.
 
-* дополнительные источники фильмов и сериалов;
-* парсеры видео;
-* источники прямых трансляций;
-* расширения проигрывателя;
-* функции, связанные с субтитрами;
-* расширения интерфейса;
-* другие функции, совместимые с Lampa.
+Все файлы плагинов должны находиться в каталоге `plugins/`.
 
-Все плагины распространяются в виде JavaScript-файлов с расширением `.js`.
+### Каталог плагинов
 
-### Требования к плагинам
-
-Плагины должны соответствовать архитектуре и правилам написания плагинов Lampa.
-
-Основные требования:
-
-1. Файл плагина должен иметь расширение `.js`.
-2. Плагин должен загружаться через механизм плагинов Lampa.
-3. Следует избегать ненужного загрязнения глобального пространства имён.
-4. По возможности следует использовать API и механизмы расширения Lampa.
-5. Не следует изменять части Lampa, которые не связаны с работой плагина.
-6. Желательно поддерживать актуальные версии Lampa.
-7. Использование сторонних зависимостей должно быть указано.
-8. Название, версия и назначение плагина должны быть понятны из исходного кода.
-
-### Рекомендуемая структура
-
-Базовый плагин может иметь следующую структуру:
-
-```javascript
-(function () {
-    'use strict';
-
-    var plugin = {
-        name: 'Plugin Name',
-        version: '1.0.0'
-    };
-
-    // Код плагина
-
-})();
-```
-
-При использовании API Lampa инициализация должна выполняться в соответствии с механизмом плагинов Lampa.
-
-### Имена файлов
-
-Файлы плагинов должны заканчиваться на `.js`.
-
-Например:
+Все плагины необходимо размещать в:
 
 ```text
-plugin-name.js
-torrentio.js
-live-sports.js
-subtitle.js
-video-parser.js
+plugins/
 ```
-
-### Установка
-
-Добавьте URL JavaScript-файла плагина в настройках плагинов Lampa.
 
 Например:
-
-```text
-https://example.com/lampa/plugin-name.js
-```
-
-После этого загрузите плагин через менеджер плагинов Lampa.
-
-### Структура проекта
-
-Рекомендуемая структура:
 
 ```text
 .
 ├── README.md
-├── plugins/
-│   ├── plugin-name.js
-│   ├── torrentio.js
-│   ├── live-sports.js
-│   └── subtitle.js
-└── LICENSE
+├── LICENSE
+└── plugins/
+    ├── torrentio.js
+    ├── live-sports.js
+    ├── subtitle.js
+    └── video-parser.js
 ```
 
-Для небольших проектов файлы `.js` можно размещать непосредственно в корне репозитория.
+**Файлы `.js` плагинов нельзя размещать непосредственно в корне репозитория.**
+
+### Автоматическая сборка
+
+При сборке проекта Cordova все файлы `.js`, находящиеся в каталоге `plugins/`, автоматически включаются в локальную версию Lampa.
+
+Поэтому:
+
+* все `.js` из `plugins/` автоматически добавляются в сборку;
+* отдельная регистрация каждого плагина не требуется;
+* вручную добавлять URL плагинов не нужно;
+* после сборки плагины работают как локальные плагины Lampa;
+* файлы других форматов не загружаются как плагины.
+
+### Требования к плагинам
+
+Плагины должны соответствовать архитектуре и правилам разработки плагинов Lampa.
+
+Основные требования:
+
+1. Файл плагина должен иметь расширение `.js`.
+2. Все плагины должны находиться в каталоге `plugins/`.
+3. Плагин должен корректно загружаться через механизм плагинов Lampa.
+4. Следует избегать ненужного загрязнения глобального пространства имён.
+5. По возможности необходимо использовать API Lampa.
+6. Не следует изменять функции Lampa, не связанные с работой плагина.
+7. Желательно поддерживать актуальные версии Lampa.
+8. Сторонние зависимости должны быть указаны.
+9. Название, версия и назначение плагина должны быть понятны.
+
+### Установка
+
+Этот репозиторий предназначен для **локальной версии Lampa на базе Cordova**.
+
+Не требуется устанавливать плагины по отдельности через URL.
+
+Поместите файл `.js` в:
+
+```text
+plugins/
+```
+
+При следующей сборке Cordova все `.js`-файлы из этого каталога автоматически попадут в локальную версию Lampa.
+
+### Обновление
+
+Для обновления плагина достаточно поместить новый `.js`-файл в каталог `plugins/` и заменить старый файл.
+
+Например:
+
+```text
+plugins/
+└── torrentio.js
+```
+
+Замените существующий `torrentio.js` новой версией и повторно выполните сборку Cordova.
+
+Новая версия автоматически попадёт в локальную сборку Lampa.
+
+### Добавление нового плагина
+
+Чтобы добавить новый плагин, достаточно добавить новый `.js`-файл в каталог `plugins/`:
+
+```text
+plugins/
+├── torrentio.js
+├── live-sports.js
+├── subtitle.js
+├── video-parser.js
+└── new-plugin.js
+```
+
+При следующей сборке новый плагин будет автоматически включён.
+
+### Удаление плагина
+
+Чтобы удалить плагин, удалите соответствующий `.js`-файл из каталога `plugins/`.
+
+После повторной сборки этот плагин больше не будет включён в Lampa.
+
+### Структура проекта
+
+```text
+.
+├── README.md
+├── LICENSE
+└── plugins/
+    ├── plugin-name.js
+    ├── torrentio.js
+    ├── live-sports.js
+    └── subtitle.js
+```
+
+**Корень репозитория предназначен для файлов проекта. Все `.js`-файлы плагинов Lampa должны находиться в каталоге `plugins/`.**
 
 ### Отказ от ответственности
 
-Работоспособность сторонних сайтов, API, видеоресурсов и источников субтитров зависит от соответствующих поставщиков.
+Работоспособность сторонних веб-сайтов, API, видеоресурсов, прямых трансляций и источников субтитров зависит от соответствующих поставщиков.
 
-Пользователь самостоятельно несёт ответственность за соблюдение применимого законодательства и условий использования соответствующих сервисов.
+Пользователь самостоятельно отвечает за соблюдение применимого законодательства и условий использования соответствующих сервисов.
 
 ---
 
@@ -395,17 +556,44 @@ https://example.com/lampa/plugin-name.js
 
 Цей репозиторій містить **JavaScript-плагіни для Lampa**.
 
-Плагіни призначені для розширення можливостей Lampa, зокрема:
+Під час створення локальної версії Lampa за допомогою **Cordova** усі плагіни автоматично додаються до збірки та працюють як локальні плагіни Lampa.
 
-* додаткові джерела фільмів і серіалів;
-* парсери відео;
-* джерела прямих трансляцій;
-* розширення програвача;
-* функції, пов'язані із субтитрами;
-* розширення інтерфейсу;
-* інші функції, сумісні з Lampa.
+Усі файли плагінів повинні знаходитися в каталозі `plugins/`.
 
-Усі плагіни поширюються у вигляді JavaScript-файлів із розширенням `.js`.
+### Каталог плагінів
+
+Усі плагіни потрібно розміщувати в:
+
+```text
+plugins/
+```
+
+Наприклад:
+
+```text
+.
+├── README.md
+├── LICENSE
+└── plugins/
+    ├── torrentio.js
+    ├── live-sports.js
+    ├── subtitle.js
+    └── video-parser.js
+```
+
+**Файли `.js` плагінів не можна розміщувати безпосередньо в корені репозиторію.**
+
+### Автоматичне пакування
+
+Під час збирання проєкту Cordova усі файли `.js` у каталозі `plugins/` автоматично додаються до локальної версії Lampa.
+
+Тому:
+
+* усі `.js` у `plugins/` автоматично пакуються;
+* окрема реєстрація кожного плагіна не потрібна;
+* не потрібно вручну додавати URL плагінів;
+* після збирання плагіни працюють як локальні плагіни Lampa;
+* файли інших форматів не завантажуються як плагіни.
 
 ### Вимоги до плагінів
 
@@ -414,80 +602,83 @@ https://example.com/lampa/plugin-name.js
 Основні вимоги:
 
 1. Файл плагіна повинен мати розширення `.js`.
-2. Плагін повинен завантажуватися через механізм плагінів Lampa.
-3. Не слід без потреби забруднювати глобальний простір імен.
-4. За можливості необхідно використовувати API та механізми розширення Lampa.
-5. Не слід змінювати функціональність Lampa, яка не пов'язана з роботою плагіна.
-6. Бажано підтримувати актуальні версії Lampa.
-7. Використання сторонніх залежностей повинно бути зазначене.
-8. Назва, версія та призначення плагіна повинні бути зрозумілими.
-
-### Рекомендована структура
-
-Базовий плагін може мати таку структуру:
-
-```javascript
-(function () {
-    'use strict';
-
-    var plugin = {
-        name: 'Plugin Name',
-        version: '1.0.0'
-    };
-
-    // Код плагіна
-
-})();
-```
-
-Якщо плагін використовує API Lampa, його ініціалізація повинна виконуватися відповідно до механізму плагінів Lampa.
-
-### Назви файлів
-
-Файли плагінів повинні закінчуватися на `.js`.
-
-Наприклад:
-
-```text
-plugin-name.js
-torrentio.js
-live-sports.js
-subtitle.js
-video-parser.js
-```
+2. Усі плагіни повинні знаходитися в каталозі `plugins/`.
+3. Плагін повинен коректно завантажуватися через механізм плагінів Lampa.
+4. Не слід без потреби забруднювати глобальний простір імен.
+5. За можливості необхідно використовувати API Lampa.
+6. Не слід змінювати функціональність Lampa, яка не пов'язана з роботою плагіна.
+7. Бажано підтримувати актуальні версії Lampa.
+8. Сторонні залежності повинні бути зазначені.
+9. Назва, версія та призначення плагіна повинні бути зрозумілими.
 
 ### Встановлення
 
-Додайте URL JavaScript-файлу плагіна в налаштуваннях плагінів Lampa.
+Цей репозиторій призначений для **локальної версії Lampa на базі Cordova**.
+
+Немає необхідності встановлювати плагіни окремо через URL.
+
+Помістіть файл `.js` у:
+
+```text
+plugins/
+```
+
+Під час наступної збірки Cordova усі `.js`-файли з цього каталогу автоматично потраплять до локальної версії Lampa.
+
+### Оновлення
+
+Щоб оновити плагін, достатньо помістити новий `.js`-файл у каталог `plugins/` та замінити старий файл.
 
 Наприклад:
 
 ```text
-https://example.com/lampa/plugin-name.js
+plugins/
+└── torrentio.js
 ```
 
-Після цього завантажте плагін через менеджер плагінів Lampa.
+Замініть існуючий `torrentio.js` новою версією та повторно виконайте збірку Cordova.
+
+Нова версія автоматично потрапить до локальної збірки Lampa.
+
+### Додавання нового плагіна
+
+Щоб додати новий плагін, достатньо додати новий `.js`-файл до каталогу `plugins/`:
+
+```text
+plugins/
+├── torrentio.js
+├── live-sports.js
+├── subtitle.js
+├── video-parser.js
+└── new-plugin.js
+```
+
+Під час наступної збірки новий плагін буде автоматично доданий.
+
+### Видалення плагіна
+
+Щоб видалити плагін, видаліть відповідний `.js`-файл із каталогу `plugins/`.
+
+Після повторної збірки цей плагін більше не буде включений до Lampa.
 
 ### Структура проєкту
-
-Рекомендована структура:
 
 ```text
 .
 ├── README.md
-├── plugins/
-│   ├── plugin-name.js
-│   ├── torrentio.js
-│   ├── live-sports.js
-│   └── subtitle.js
-└── LICENSE
+├── LICENSE
+└── plugins/
+    ├── plugin-name.js
+    ├── torrentio.js
+    ├── live-sports.js
+    └── subtitle.js
 ```
 
-Для невеликих проєктів `.js`-файли можна розміщувати безпосередньо в корені репозиторію.
+**Корінь репозиторію призначений для файлів проєкту. Усі `.js`-файли плагінів Lampa повинні знаходитися в каталозі `plugins/`.**
 
 ### Відмова від відповідальності
 
-Працездатність сторонніх вебсайтів, API, відеоресурсів та джерел субтитрів залежить від відповідних постачальників.
+Працездатність сторонніх вебсайтів, API, відеоресурсів, прямих трансляцій та джерел субтитрів залежить від відповідних постачальників.
 
 Користувач самостійно відповідає за дотримання чинного законодавства та умов використання відповідних сервісів.
 
