@@ -57,7 +57,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (防盗链 + 顶栏更新角标 + 极简设置键菜单 + 状态栏隐藏) =================
+# ================= 1. 注入 index.html (外圈动态环形进度条 + Noty 双联动 + 纯净焦点 + 防盗链) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -78,12 +78,14 @@ cordova_init_template = r"""
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        width: 36px;
+        height: 36px;
     }
     /* 右上角红色小圆点角标 */
     .aston-update-dot {
         position: absolute;
-        top: 5px;
-        right: 5px;
+        top: 4px;
+        right: 4px;
         width: 8px;
         height: 8px;
         background: #ff3b30;
@@ -91,7 +93,18 @@ cordova_init_template = r"""
         box-shadow: 0 0 6px #ff3b30;
         pointer-events: none;
     }
-    /* 遥控器选中时：纯白底色 + 黑色图标，与 Lampa 顶栏风格完全统一 */
+    /* 外圈动态环形下载进度条 SVG */
+    .aston-update-ring {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        transform: rotate(-90deg);
+        display: none;
+        pointer-events: none;
+    }
+    /* 遥控器选中时：纯白底色 + 黑色图标，与 Lampa 顶栏完全统一 */
     .head__action.aston-update-action.focus {
         background: #fff !important;
         color: #000 !important;
@@ -163,8 +176,18 @@ cordova_init_template = r"""
             return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
         }
 
-        // --- 深度修复安装包解析错误与外部存储路径 ---
+        // --- 双联动下载：环形进度条 + Noty 实时文字提示 ---
         function startUpdateDownload(downloadUrl, versionName) {
+            // 1. 启动顶栏环形进度条
+            var dot = document.getElementById('aston_update_dot');
+            var ringSvg = document.getElementById('aston_update_ring_svg');
+            var ringFill = document.getElementById('aston_ring_fill');
+
+            if (dot) dot.style.display = 'none'; // 隐藏红点
+            if (ringSvg) ringSvg.style.display = 'block'; // 显示进度圆环
+            if (ringFill) ringFill.style.strokeDashoffset = '94.25'; // 重置为 0%
+
+            // 2. 原有 Noty 正常提醒
             if (window.Lampa && Lampa.Noty) {
                 Lampa.Noty.show(t('aston_update_start', '开始下载更新包...'));
             }
@@ -174,16 +197,26 @@ cordova_init_template = r"""
             xhr.responseType = 'blob';
 
             xhr.onprogress = function (e) {
-                if (e.lengthComputable && window.Lampa && Lampa.Noty) {
+                if (e.lengthComputable) {
                     var pct = Math.round((e.loaded / e.total) * 100);
                     var loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
                     var totalMB = (e.total / (1024 * 1024)).toFixed(1);
-                    Lampa.Noty.show(t('aston_update_downloading', '正在下载') + ' ' + versionName + ': ' + pct + '% (' + loadedMB + '/' + totalMB + ' MB)');
+
+                    // A. 原有 Noty 文字展示完全不变
+                    if (window.Lampa && Lampa.Noty) {
+                        Lampa.Noty.show(t('aston_update_downloading', '正在下载') + ' ' + versionName + ': ' + pct + '% (' + loadedMB + '/' + totalMB + ' MB)');
+                    }
+
+                    // B. 外圈 SVG 环形进度条实时顺时针填充！
+                    if (ringFill) {
+                        ringFill.style.strokeDashoffset = (94.25 * (1 - (pct / 100))).toFixed(2);
+                    }
                 }
             };
 
             xhr.onload = function () {
                 if (xhr.status === 200) {
+                    if (ringFill) ringFill.style.strokeDashoffset = '0'; // 100% 转满
                     if (window.Lampa && Lampa.Noty) {
                         Lampa.Noty.show(t('aston_update_installing', '下载完成，正在唤起安装器...'));
                     }
@@ -202,6 +235,8 @@ cordova_init_template = r"""
                         });
                     });
                 } else {
+                    if (ringSvg) ringSvg.style.display = 'none';
+                    if (dot) dot.style.display = 'block';
                     if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_failed', '下载失败') + ': ' + xhr.status);
                 }
             };
@@ -228,6 +263,8 @@ cordova_init_template = r"""
             }
 
             xhr.onerror = function () {
+                if (ringSvg) ringSvg.style.display = 'none';
+                if (dot) dot.style.display = 'block';
                 if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_error', '下载出错，请检查网络连接'));
             };
 
@@ -265,7 +302,7 @@ cordova_init_template = r"""
                 },
                 aston_update_found: { zh: '发现新版本', en: 'New Version Available', ru: 'Доступна новая версия', uk: 'Доступна нова версія', be: 'Даступная новая версія', bg: 'Налична е нова версия', cs: 'Nová verze k dispozici', fr: 'Nouvelle version disponible', he: 'גרסה חדשה זמינה', pl: 'Dostępna nowa wersja', pt: 'Nova versão disponível', ro: 'Versiune nouă disponibilă' },
                 aston_update_now: { zh: '立即更新', en: 'Update Now', ru: 'Обновить', uk: 'Оновити', be: 'Абнавіць', bg: 'Обнови', cs: 'Aktualizovat', fr: 'Mettre à jour', he: 'עדכן עכשיו', pl: 'Aktualizuj', pt: 'Atualizar agora', ro: 'Actualizează acum' },
-                aston_update_later: { zh: '稍后再说', en: 'Later', ru: 'Позже', uk: 'Пізніше', be: 'Пазней', bg: 'По-късно', cs: 'Později', fr: 'Plus tard', he: 'מאוחר יותר', pl: 'Później', pt: 'Mais tarde', ro: 'Mai târziu' },
+                aston_update_later: { zh: '稍后再说', en: 'Later', ru: 'Позже', uk: 'Пізніше', be: 'Пазней', bg: 'По-късно', cs: 'Pozдзеji', fr: 'Plus tard', he: 'מאוחר יותר', pl: 'Później', pt: 'Mais tarde', ro: 'Mai târziu' },
                 aston_update_start: { zh: '开始下载更新包...', en: 'Starting update download...', ru: 'Запуск загрузки обновления...', uk: 'Початок завантаження оновлення...', be: 'Пачатак загрузкі абнаўлення...', bg: 'Стартиране на изтеглянето...', cs: 'Zahájení stahování...', fr: 'Démarrage du téléchargement...', he: 'מתחיל להוריד עדכון...', pl: 'Rozpoczynanie pobierania...', pt: 'Iniciando download...', ro: 'Se începe descărcarea...' },
                 aston_update_downloading: { zh: '正在下载', en: 'Downloading', ru: 'Загрузка', uk: 'Завантаження', be: 'Загрузка', bg: 'Изтегляне', cs: 'Stahování', fr: 'Téléchargement', he: 'מוריד', pl: 'Pobieranie', pt: 'Baixando', ro: 'Descărcare' },
                 aston_update_installing: { zh: '下载完成，正在唤起系统安装器...', en: 'Downloaded, opening installer...', ru: 'Загружено, запуск установщика...', uk: 'Завантажено, запуск інсталятора...', be: 'Загружана, запуск усталёўшчыка...', bg: 'Изтеглено, отваряне на инсталатора...', cs: 'Staženo, otevírání instalátoru...', fr: "Ouverture de l'installateur...", he: 'הורד, פותח מתקין...', pl: 'Pobrano, otwieranie instalatora...', pt: 'Baixado, abrindo instalador...', ro: 'Descărcat, deschidere instalator...' },
@@ -276,11 +313,10 @@ cordova_init_template = r"""
             window._aston_menu_lang_inited = true;
         }
 
-        // --- 弹出版本详情与确认升级对话框（保留精准的 controller_enabled 焦点还原） ---
+        // --- 弹出版本详情与确认升级对话框 ---
         function showUpdateDialog(info, dlUrl, showVer) {
             initAstonI18n();
             if (window.Lampa && Lampa.Select) {
-                // 【核心】：因为只从顶栏触发，此时捕获到的 controller_enabled 100% 就是真实的 'head'！
                 var controller_enabled = (Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'head';
 
                 var doRestoreFocus = function () {
@@ -310,7 +346,7 @@ cordova_init_template = r"""
             }
         }
 
-        // --- 在顶栏 Header .open--search 之前插入更新图标（加 150ms 延时防穿透） ---
+        // --- 在顶栏 Header .open--search 之前插入带环形进度条的更新图标 ---
         function renderHeaderUpdateBadge(info, dlUrl, showVer) {
             if (document.getElementById('aston_header_update_btn')) return;
 
@@ -323,12 +359,16 @@ cordova_init_template = r"""
             btn.setAttribute('tabindex', '0');
             btn.setAttribute('title', '发现新版本');
 
-            // SVG 严格采用 fill="currentColor"，继承顶栏天然颜色
+            // 包含：居中 SVG 图标 + 右上角红点 + 隐藏的外圈 360° SVG 环形进度条
             btn.innerHTML = 
-                '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">' +
                 '  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>' +
                 '</svg>' +
-                '<span class="aston-update-dot"></span>';
+                '<span id="aston_update_dot" class="aston-update-dot"></span>' +
+                '<svg id="aston_update_ring_svg" class="aston-update-ring" viewBox="0 0 36 36">' +
+                '  <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2.5"></circle>' +
+                '  <circle id="aston_ring_fill" cx="18" cy="18" r="15" fill="none" stroke="#ffaa00" stroke-width="2.5" stroke-dasharray="94.25" stroke-dashoffset="94.25" stroke-linecap="round" style="transition: stroke-dashoffset 0.15s linear;"></circle>' +
+                '</svg>';
 
             var searchBtn = targetHeader.querySelector('.open--search');
             if (searchBtn) {
@@ -342,12 +382,10 @@ cordova_init_template = r"""
                 if (e && e.preventDefault) e.preventDefault();
                 if (e && e.stopPropagation) e.stopPropagation();
 
-                // 500毫秒防双击互锁
                 if (isClicking) return;
                 isClicking = true;
                 setTimeout(function () { isClicking = false; }, 500);
 
-                // 延时 150 毫秒等遥控器 OK 键完全松开后再弹窗，彻底杜绝秒下载！
                 setTimeout(function () {
                     showUpdateDialog(info, dlUrl, showVer);
                 }, 150);
@@ -359,7 +397,7 @@ cordova_init_template = r"""
                 btn.onclick = onTrigger;
             }
 
-            console.log('[Update] 已成功在 .open--search 之前挂载更新图标');
+            console.log('[Update] 已成功在 .open--search 之前挂载动态环状更新图标');
         }
 
         // --- 在线检测更新核心函数 ---
@@ -384,7 +422,6 @@ cordova_init_template = r"""
                             var dlUrl = isZh ? (info.mirror_url || info.direct_url) : (info.direct_url || info.mirror_url);
                             var showVer = info.versionName || info.version || ('Build ' + info.versionCode);
 
-                            // 只负责挂载顶栏图标，绝对不强行弹大窗打扰观影！
                             renderHeaderUpdateBadge(info, dlUrl, showVer);
                         }
                     } catch (e) {}
@@ -394,7 +431,7 @@ cordova_init_template = r"""
             xhr.send();
         }
 
-        // --- 弹出遥控器设置键快捷菜单（极致精简：只保留重新加载与安全退出） ---
+        // --- 弹出遥控器设置键快捷菜单（重新加载 + 安全退出） ---
         function triggerAstonQuickMenu() {
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
                 return;
@@ -422,7 +459,6 @@ cordova_init_template = r"""
                         }
                     ],
                     onBack: function () {
-                        // 退出快捷菜单永远安全还给海报区
                         if (Lampa.Controller) {
                             Lampa.Controller.toggle('content');
                         }
@@ -451,7 +487,6 @@ cordova_init_template = r"""
                 });
             }
 
-            // 确保状态栏隐藏
             if (window.StatusBar) {
                 window.StatusBar.hide();
             }
@@ -483,7 +518,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", "<head>\n" + cordova_init_code, 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入纯净顶栏更新、精准焦点记忆与防盗链")
+    print("[Success] index.html 成功注入双联动环形进度更新、防盗链与极简菜单")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -914,4 +949,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 23 条规则校验 100% 通过，顶栏纯净更新与稳妥焦点已就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，环状动态进度条与全功能补丁就绪！准许打包 APK。\n")
