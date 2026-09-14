@@ -2,6 +2,9 @@
 
 [English](#english) | [简体中文](#简体中文) | [Русский](#русский) | [Українська](#українська)
 
+<!-- LATEST_BUILD_INFO_START -->
+<!-- LATEST_BUILD_INFO_END -->
+
 ---
 
 ## 简体中文
