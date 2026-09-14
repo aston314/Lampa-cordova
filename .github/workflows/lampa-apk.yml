@@ -268,7 +268,6 @@ jobs:
           # --- 抓取并追踪指定的目标仓库列表 ---
           RELATED_REPOS = [
               'lampa-app/LAMPA',
-              'yourok/torrserver'
           ]
           tz_cst = timezone(timedelta(hours=8))
           related_sections = [
