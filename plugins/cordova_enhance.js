@@ -1,7 +1,14 @@
 (function () {
     'use strict';
 
-    // 动态获取最新常量（杜绝过早固化为 1 的问题）
+    // ================= 0. 单例保护：杜绝热重载/二次载入导致的事件重复挂载 =================
+    if (window._aston_update_inited) {
+        console.log('[AstonUpdate] 插件已在内存中运行，跳过重复注册');
+        return;
+    }
+    window._aston_update_inited = true;
+
+    // 动态获取常量，彻底杜绝顶部闭包过早固化为 1 导致的误报新版本
     function getBuildCode() {
         return window.CURRENT_BUILD_CODE || 1;
     }
@@ -10,7 +17,7 @@
         return window.CURRENT_REPO || 'owner/repo';
     }
 
-    // ================= 1. 样式注入 =================
+    // ================= 1. 样式注入（含遥控器选中、鼠标悬浮与原生聚焦对齐） =================
     function injectStyles() {
         if (document.getElementById('aston-update-style')) return;
         var style = document.createElement('style');
@@ -20,11 +27,12 @@
             '.head__action.aston-update-action { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; }' +
             '.aston-update-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; background: #ff3b30; border-radius: 50%; box-shadow: 0 0 6px #ff3b30; pointer-events: none; }' +
             '.aston-update-ring { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg); display: none; pointer-events: none; }' +
-            '.head__action.aston-update-action.focus { background: #fff !important; color: #000 !important; border-radius: 50%; }';
+            /* 核心修复：对齐遥控器选中(.focus)、鼠标悬停(:hover)与键盘聚焦(:focus)，底色纯白圆角 */
+            '.head__action.aston-update-action.focus, .head__action.aston-update-action:hover, .head__action.aston-update-action:focus { background: #fff !important; color: #000 !important; border-radius: 50%; outline: none; }';
         document.head.appendChild(style);
     }
 
-    // ================= 2. 12 国多语言字典 =================
+    // ================= 2. 12 国全语言字典（修复希伯来语西里尔字符污染） =================
     function initAstonI18n() {
         if (window._aston_full_lang_inited || !window.Lampa || !Lampa.Lang) return;
         Lampa.Lang.add({
@@ -32,7 +40,8 @@
             aston_menu_player: { zh: '默认播放器', en: 'Default Player', ru: 'Плеер по умолчанию', uk: 'Плеєр за замовчуванням', be: 'Плэер па змаўчанні', bg: 'Плейър по подразбиране', cs: 'Výchozí přehrávač', fr: 'Lecteur par défaut', he: 'נגן ברירת מחדל', pl: 'Domyślny odtwarzacz', pt: 'Reprodutor padrão', ro: 'Player implicit' },
             aston_player_system: { zh: '系统选择 / 每次询问', en: 'System Chooser / Always ask', ru: 'Системный выбор / Спрашивать', uk: 'Системний вибір / Запитувати', be: 'Сістэмны выбар / Пытацца', bg: 'Избор от системата / Винаги питай', cs: 'Systémový výběr / Vždy se ptát', fr: 'Sélecteur système / Toujours demander', he: 'בורר המערכת / שאל תמיד', pl: 'Wybór systemowy / Zawsze pytaj', pt: 'Seletor do sistema / Sempre perguntar', ro: 'Selector de sistem / Întreabă mereu' },
             aston_player_set_done: { zh: '已设置默认播放器', en: 'Default player set to', ru: 'Плеер установлен', uk: 'Плеєр встановлено', be: 'Плэер усталяваны', bg: 'Плейърът е зададен', cs: 'Výchozí přehrávač nastaven', fr: 'Lecteur par défaut défini sur', he: 'נגן ברירת מחדל הוגדר', pl: 'Ustawiono domyślny odtwarzacz', pt: 'Reprodutor padrão definido', ro: 'Player implicit setat' },
-            aston_menu_reload: { zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити', be: 'Перазагрузіць', bg: 'Презареждане', cs: 'Znovu načíst', fr: 'Recharger', he: 'טעינה מחדш', pl: 'Przeładuj', pt: 'Recarregar', ro: 'Reîncărcare' },
+            // 字符集修复：原 'טעינה מחדш' (含俄语ш) 已修正为标准希伯来语 'טעינה מחדש'
+            aston_menu_reload: { zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити', be: 'Перазагрузіць', bg: 'Презареждане', cs: 'Znovu načíst', fr: 'Recharger', he: 'טעינה מחדש', pl: 'Przeładuj', pt: 'Recarregar', ro: 'Reîncărcare' },
             aston_menu_reload_descr: { zh: '刷新当前界面与数据', en: 'Refresh interface and data', ru: 'Обновить интерфейс и данные', uk: 'Оновити інтерфейс та дані', be: 'Абнавіць інтэрфейс і дадзеныя', bg: 'Опресняване на интерфейса и данните', cs: 'Obnovit rozhraní a data', fr: "Actualiser l'interface et les données", he: 'רענון הממשק והנתונים', pl: 'Odśwież interfejs i dane', pt: 'Atualizar interface e dados', ro: 'Reîmprospătează interfața și datele' },
             aston_menu_exit: { zh: '退出应用', en: 'Exit', ru: 'Выход', uk: 'Вихід', be: 'Выхад', bg: 'Изход', cs: 'Ukončit', fr: 'Quitter', he: 'יציאה', pl: 'Wyjście', pt: 'Sair', ro: 'Ieșire' },
             aston_menu_exit_descr: { zh: '清理临时缓存并退出 Lampa', en: 'Clean cache and exit Lampa', ru: 'Очистить кэш и выйти из Lampa', uk: 'Очистити кеш та вийти з Lampa', be: 'Ачысціць кэш і выйсці з Lampa', bg: 'Изчистване на кеша и изход', cs: 'Vymazat mezipaměť a ukončit', fr: 'Vider le cache et quitter', he: 'ניקוי מטמון ויציאה מ-Lampa', pl: 'Wyczyść pamięć podręczną i wyjdź', pt: 'Limpar cache e sair', ro: 'Curăță memoria cache și ieși' },
@@ -44,6 +53,7 @@
             aston_update_installing: { zh: '下载完成，正在唤起系统安装器...', en: 'Downloaded, opening installer...', ru: 'Загружено, запуск установщика...', uk: 'Завантажено, запуск інсталятора...', be: 'Загружана, запуск усталёўшчыка...', bg: 'Изтеглено, отваряне на инсталатора...', cs: 'Staženo, otevírání instalátoru...', fr: "Ouverture de l'installateur...", he: 'הורד, פותח מתקין...', pl: 'Pobrano, otwieranie instalatora...', pt: 'Baixado, abrindo instalador...', ro: 'Descărcat, deschidere instalator...' },
             aston_update_failed: { zh: '下载失败', en: 'Download failed', ru: 'Ошибка загрузки', uk: 'Помилка завантаження', be: 'Памылка загрузкі', bg: 'Грешка при изтегляне', cs: 'Stahování selhalo', fr: 'Échec du téléchargement', he: 'ההורדה נכשלה', pl: 'Pobieranie nie powiodło się', pt: 'Falha no download', ro: 'Descărcare eșuată' },
             aston_update_error: { zh: '下载出错，请检查网络连接', en: 'Download error, please check connection', ru: 'Ошибка загрузки, проверьте сеть', uk: 'Помилка завантаження, перевірте мережу', be: 'Памылка загрузкі, праверце сетку', bg: 'Грешка при изтегляне, проверете мрежата', cs: 'Chyba stahování, zkontrolujte síť', fr: 'Erreur de téléchargement, vérifiez le réseau', he: 'שגיאת הורדה, בדוק חיבור לרשת', pl: 'Błąd pobierania, sprawdź połączenie', pt: 'Erro no download, verifique a conexão', ro: 'Eroare de descărcare, verificați rețeaua' },
+            aston_update_timeout: { zh: '下载超时，请重试', en: 'Download timed out, please retry', ru: 'Время загрузки истекло', uk: 'Час завантаження минув', be: 'Час загрузкі скончыўся', bg: 'Времето за изтегляне изтече', cs: 'Časový limit stahování vypršel', fr: 'Délai de téléchargement dépassé', he: 'זמן ההורדה תם', pl: 'Przekroczono limit czasu pobierania', pt: 'Tempo limite de download esgotado', ro: 'Timpul de descărcare a expirat' },
             aston_update_sub: { zh: '在线极速下载并覆盖升级', en: 'Download and update online', ru: 'Онлайн загрузка и обновление', uk: 'Онлайн завантаження та оновлення', be: 'Анлайн загрузка і абнаўленне', bg: 'Онлайн изтегляне и обновяване', cs: 'Online stažení a aktualizace', fr: 'Télécharger et mettre à jour en ligne', he: 'הורד ועדכן באופן מקוון', pl: 'Pobierz i zaktualizuj online', pt: 'Baixar e atualizar online', ro: 'Descărcați și actualizați online' }
         });
         window._aston_full_lang_inited = true;
@@ -53,7 +63,7 @@
         return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
     }
 
-    // ================= 3. 缓存清理与退出 =================
+    // ================= 3. 缓存清理与安全退出 =================
     function cleanCacheAndExit() {
         if (window.resolveLocalFileSystemURL && window.cordova && cordova.file && cordova.file.cacheDirectory) {
             window.resolveLocalFileSystemURL(cordova.file.cacheDirectory, function (dirEntry) {
@@ -78,10 +88,12 @@
                             entry.remove(onFinish, onFinish);
                         }
                     });
-                }, function () {
+                }, function (err) {
+                    console.warn('[AstonUpdate] 遍历缓存文件失败:', err);
                     if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
                 });
-            }, function () {
+            }, function (err) {
+                console.warn('[AstonUpdate] 解析本地缓存目录失败:', err);
                 if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
             });
         } else {
@@ -89,7 +101,7 @@
         }
     }
 
-    // ================= 4. 播放器选择菜单 =================
+    // ================= 4. 原生设置：播放器多语言选择菜单 =================
     window.selectDefaultPlayerMenu = function () {
         initAstonI18n();
         var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
@@ -167,11 +179,16 @@
         }
     }
 
-    // ================= 6. 极速下载与安装器唤起 =================
+    // ================= 6. 极速下载与安装唤起（补齐错误与超时处理） =================
     function startUpdateDownload(downloadUrl, versionName) {
         var dot = document.getElementById('aston_update_dot');
         var ringSvg = document.getElementById('aston_update_ring_svg');
         var ringFill = document.getElementById('aston_ring_fill');
+
+        function resetBadge() {
+            if (ringSvg) ringSvg.style.display = 'none';
+            if (dot) dot.style.display = 'block';
+        }
 
         if (dot) dot.style.display = 'none';
         if (ringSvg) ringSvg.style.display = 'block';
@@ -184,6 +201,7 @@
         var xhr = new XMLHttpRequest();
         xhr.open('GET', downloadUrl, true);
         xhr.responseType = 'blob';
+        xhr.timeout = 180000; // 下载宽限 3 分钟
 
         xhr.onprogress = function (e) {
             if (e.lengthComputable) {
@@ -223,14 +241,20 @@
                     }, function () {
                         writeNewApk(dirEntry, blob, downloadUrl);
                     });
+                }, function (err) {
+                    console.warn('[AstonUpdate] 目录解析失败，降级外部下载:', err);
+                    resetBadge();
+                    if (window.cordova && cordova.InAppBrowser) {
+                        cordova.InAppBrowser.open(downloadUrl, '_system');
+                    }
                 });
             } else {
-                if (ringSvg) ringSvg.style.display = 'none';
-                if (dot) dot.style.display = 'block';
+                resetBadge();
                 if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_failed', '下载失败') + ': ' + xhr.status);
             }
         };
 
+        // 核心加固：fileWriter 增加 onerror 回调，杜绝无感静默卡死
         function writeNewApk(dirEntry, blob, fallbackUrl) {
             dirEntry.getFile('update.apk', { create: true, overwrite: true }, function (fileEntry) {
                 fileEntry.createWriter(function (fileWriter) {
@@ -243,21 +267,41 @@
                                 type: 'application/vnd.android.package-archive',
                                 flags: [268435456, 1]
                             }, function () {}, function (err) {
+                                console.warn('[AstonUpdate] Intent 调起失败，降级外部打开:', err);
                                 if (window.cordova && cordova.InAppBrowser) {
                                     cordova.InAppBrowser.open(fallbackUrl, '_system');
                                 }
                             });
                         }
                     };
+                    fileWriter.onerror = function (err) {
+                        console.warn('[AstonUpdate] 文件写入失败，降级外部下载:', err);
+                        resetBadge();
+                        if (window.cordova && cordova.InAppBrowser) {
+                            cordova.InAppBrowser.open(fallbackUrl, '_system');
+                        }
+                    };
                     fileWriter.write(blob);
                 });
+            }, function (err) {
+                console.warn('[AstonUpdate] 创建安装包文件句柄失败:', err);
+                resetBadge();
+                if (window.cordova && cordova.InAppBrowser) {
+                    cordova.InAppBrowser.open(fallbackUrl, '_system');
+                }
             });
         }
 
-        xhr.onerror = function () {
-            if (ringSvg) ringSvg.style.display = 'none';
-            if (dot) dot.style.display = 'block';
+        xhr.onerror = function (err) {
+            console.warn('[AstonUpdate] 安装包下载网络错误:', err);
+            resetBadge();
             if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_error', '下载出错，请检查网络连接'));
+        };
+
+        xhr.ontimeout = function () {
+            console.warn('[AstonUpdate] 安装包下载连接超时');
+            resetBadge();
+            if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_timeout', '下载超时，请重试'));
         };
 
         xhr.send();
@@ -290,6 +334,7 @@
         }
     }
 
+    // ================= 7. 渲染顶栏更新角标（补齐 hover:focus 焦点状态切换） =================
     function renderHeaderUpdateBadge(info, dlUrl, showVer) {
         if (document.getElementById('aston_header_update_btn')) return;
 
@@ -333,19 +378,29 @@
             }, 150);
         };
 
+        // 核心修复：监听 Lampa 原生遥控器 hover:focus / hover:blur 事件切换选中态
         if (window.$) {
-            $(btn).on('hover:enter click', onTrigger);
+            $(btn)
+                .on('hover:enter click', onTrigger)
+                .on('hover:focus', function () {
+                    $(this).addClass('focus');
+                })
+                .on('hover:blur', function () {
+                    $(this).removeClass('focus');
+                });
         } else {
             btn.onclick = onTrigger;
+            btn.onfocus = function () { btn.classList.add('focus'); };
+            btn.onblur = function () { btn.classList.remove('focus'); };
         }
     }
 
-    // ================= 7. 动态检查更新核心 =================
+    // ================= 8. 在线检测更新核心 =================
     function checkUpdate() {
         var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
         var isZh = (curL === 'zh');
         var repo = getRepoPath();
-        var currentBuild = getBuildCode(); // 动态读取，绝不读死 1
+        var currentBuild = getBuildCode();
 
         var checkUrl = isZh 
             ? 'https://ghfast.top/https://raw.githubusercontent.com/' + repo + '/main/version.json?t=' + Date.now()
@@ -363,15 +418,31 @@
                         var showVer = info.versionName || info.version || ('Build ' + info.versionCode);
                         renderHeaderUpdateBadge(info, dlUrl, showVer);
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.warn('[AstonUpdate] 解析 version.json 异常:', e);
+                }
             }
+        };
+        xhr.onerror = function (err) {
+            console.warn('[AstonUpdate] 检测更新网络错误:', err);
+        };
+        xhr.ontimeout = function () {
+            console.warn('[AstonUpdate] 检测更新连接超时 (10s)');
         };
         xhr.send();
     }
 
-    // ================= 8. 按键全局监听 =================
+    // ================= 9. 全局按键监听（修复输入框/搜索框按 R 劫持 Bug） =================
     window.addEventListener('keydown', function (e) {
         var code = e.keyCode || e.which;
+
+        // 核心修复：在输入框打字、输入网址时，绝不劫持按键（避免字母 R 被捕获）
+        var tag = (e.target && e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable)) {
+            return;
+        }
+
+        // 仅在非输入场景下拦截遥控器 Menu/设置键：0(底层键), 82(Menu键), 93(上下文菜单键)
         if (code === 0 || code === 82 || code === 93) {
             e.preventDefault();
             e.stopPropagation();
@@ -383,7 +454,7 @@
         triggerAstonQuickMenu();
     }, false);
 
-    // ================= 9. 双重检查启动引擎（彻底消除竞态） =================
+    // ================= 10. 双重检查启动引擎（彻底消除事件错过的竞态隐患） =================
     function startEngine() {
         injectStyles();
         initAstonI18n();
@@ -395,20 +466,20 @@
             setTimeout(checkUpdate, 1000);
         }
 
-        // 判定 1：如果顶栏 DOM 早就被渲染好了，直接检查！
+        // 判定 1：若顶栏节点早已渲染完成，立即执行
         if (document.querySelector('.head__actions') || document.querySelector('.head')) {
             doCheckOnce();
             return;
         }
 
-        // 判定 2：如果还没出来，挂上 Lampa 事件监听
+        // 判定 2：若顶栏未出，挂载 Lampa 生命周期监听
         if (window.Lampa && Lampa.Listener) {
             Lampa.Listener.follow('app', function (e) {
                 if (e.type === 'ready') doCheckOnce();
             });
         }
 
-        // 判定 3：不管怎样，轮询作为终极兜底防线（找到节点立即触发，30秒后自我销毁）
+        // 判定 3：轮询兜底，抓到节点立即触发，30秒后自动销毁定时器
         var pollTimer = setInterval(function () {
             if (document.querySelector('.head__actions') || document.querySelector('.head')) {
                 clearInterval(pollTimer);
@@ -419,7 +490,6 @@
         setTimeout(function () { clearInterval(pollTimer); }, 30000);
     }
 
-    // 启动入库
     if (window.Lampa) {
         startEngine();
     } else {
