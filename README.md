@@ -10,6 +10,9 @@
 - **Direct Download**: [📦 lampa-v3.3.3-b35.apk](https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3-b35/lampa-v3.3.3-b35.apk)
 <!-- LATEST_BUILD_INFO_END -->
 
+<!-- RELATED_RELEASES_START -->
+<!-- RELATED_RELEASES_END -->
+
 ---
 
 ## 简体中文
