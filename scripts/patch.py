@@ -57,7 +57,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (规范 hover:enter 绑定 + 原生顶栏白底高亮 + 状态栏/防盗链) =================
+# ================= 1. 注入 index.html (防盗链 + 顶栏更新角标 + 动态焦点复原 + 遥控器菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -187,7 +187,6 @@ cordova_init_template = r"""
                     var targetDir = cordova.file.externalCacheDirectory || cordova.file.cacheDirectory;
 
                     window.resolveLocalFileSystemURL(targetDir, function (dirEntry) {
-                        // 彻底粉碎删除旧文件，防止尾部碎片引发解析错误
                         dirEntry.getFile('update.apk', { create: false }, function (oldFile) {
                             oldFile.remove(function () {
                                 writeNewApk(dirEntry, blob, downloadUrl);
@@ -285,10 +284,13 @@ cordova_init_template = r"""
             window._aston_menu_lang_inited = true;
         }
 
-        // --- 弹出版本详情与确认升级对话框 ---
+        // --- 弹出版本详情与确认升级对话框（支持动态焦点准确还原） ---
         function showUpdateDialog(info, dlUrl, showVer) {
             initAstonI18n();
             if (window.Lampa && Lampa.Select) {
+                // 【核心改进】：在弹窗打开前，准确记录当前激活的控制器名称（content/head/menu/settings等）
+                var controller_enabled = (Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'content';
+
                 Lampa.Select.show({
                     title: t('aston_update_found', '发现新版本') + ' ' + showVer,
                     items: [
@@ -302,17 +304,25 @@ cordova_init_template = r"""
                         {
                             title: t('aston_update_later', '稍后再说'),
                             subtitle: '',
-                            onSelect: function () {}
+                            onSelect: function () {
+                                // 点击“稍后再说”，精准返回之前的焦点
+                                if (Lampa.Controller) {
+                                    Lampa.Controller.toggle(controller_enabled);
+                                }
+                            }
                         }
                     ],
                     onBack: function () {
-                        if (Lampa.Controller) Lampa.Controller.toggle('head');
+                        // 按遥控器返回键，同样精准返回之前的焦点
+                        if (Lampa.Controller) {
+                            Lampa.Controller.toggle(controller_enabled);
+                        }
                     }
                 });
             }
         }
 
-        // --- 【规范升级】：在顶栏 Header 插入采用 currentColor 的图标与 hover:enter 绑定 ---
+        // --- 在顶栏 Header 插入采用 currentColor 的图标与 hover:enter 绑定 ---
         function renderHeaderUpdateBadge(info, dlUrl, showVer) {
             if (document.getElementById('aston_header_update_btn')) return;
 
@@ -325,7 +335,6 @@ cordova_init_template = r"""
             btn.setAttribute('tabindex', '0');
             btn.setAttribute('title', '发现新版本');
 
-            // SVG 严格采用 fill="currentColor"，继承顶栏天然颜色
             btn.innerHTML = 
                 '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">' +
                 '  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>' +
@@ -340,7 +349,6 @@ cordova_init_template = r"""
                 showUpdateDialog(info, dlUrl, showVer);
             };
 
-            // 深度适配 Lampa 官方 TV 遥控器事件 hover:enter，兼顾鼠标点击
             if (window.$) {
                 $(btn).on('hover:enter click', onTrigger);
             } else {
@@ -405,7 +413,7 @@ cordova_init_template = r"""
             xhr.send();
         }
 
-        // --- 弹出快捷操作菜单 ---
+        // --- 弹出快捷操作菜单（支持动态焦点准确还原） ---
         function triggerAstonQuickMenu() {
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
                 return;
@@ -413,6 +421,9 @@ cordova_init_template = r"""
 
             if (window.Lampa && Lampa.Select) {
                 initAstonI18n();
+
+                // 【核心改进】：在菜单打开前，同样准确记录当前激活的控制器
+                var controller_enabled = (Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'content';
 
                 Lampa.Select.show({
                     title: t('aston_menu_title', '快捷菜单'),
@@ -440,8 +451,9 @@ cordova_init_template = r"""
                         }
                     ],
                     onBack: function () {
+                        // 按遥控器返回键，安全还给原本的控制器
                         if (Lampa.Controller) {
-                            Lampa.Controller.toggle('content');
+                            Lampa.Controller.toggle(controller_enabled);
                         }
                     }
                 });
@@ -500,7 +512,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", "<head>\n" + cordova_init_code, 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入顶栏角标更新、规范按键绑定与防盗链")
+    print("[Success] index.html 成功注入动态焦点还原、顶栏角标更新与防盗链")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -931,4 +943,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 23 条规则校验 100% 通过，顶栏标准样式与按键绑定就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，动态焦点记忆与顶栏角标就绪！准许打包 APK。\n")
