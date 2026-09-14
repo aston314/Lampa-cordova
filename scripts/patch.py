@@ -335,13 +335,20 @@ cordova_init_template = r"""
             btn.setAttribute('tabindex', '0');
             btn.setAttribute('title', '发现新版本');
 
+            // SVG 采用 fill="currentColor"，继承顶栏天然颜色
             btn.innerHTML = 
                 '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">' +
                 '  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>' +
                 '</svg>' +
                 '<span class="aston-update-dot"></span>';
 
-            targetHeader.insertBefore(btn, targetHeader.firstChild);
+            // 【核心改动】：精准插入到 .open--search 搜索按钮的前面
+            var searchBtn = targetHeader.querySelector('.open--search');
+            if (searchBtn) {
+                targetHeader.insertBefore(btn, searchBtn);
+            } else {
+                targetHeader.insertBefore(btn, targetHeader.firstChild);
+            }
 
             var onTrigger = function (e) {
                 if (e && e.preventDefault) e.preventDefault();
@@ -355,7 +362,7 @@ cordova_init_template = r"""
                 btn.onclick = onTrigger;
             }
 
-            console.log('[Update] 已成功在顶栏 Header 挂载符合规范的更新图标');
+            console.log('[Update] 已成功在 .open--search 之前挂载更新图标');
         }
 
         // --- 在线检测更新核心函数 ---
