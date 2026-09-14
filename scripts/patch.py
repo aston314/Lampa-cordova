@@ -292,7 +292,10 @@ CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
         }
 
         if (!requestContent) {
-          if (url.includes('ddys')) {
+          var isHttp = url && typeof url === 'string' && (url.indexOf('http://') === 0 || url.indexOf('https://') === 0);
+          var isSpecialDdys = url && url.indexOf('ddys') !== -1;
+        
+          if (isSpecialDdys || !isHttp) {
             executeFetch(url, 'GET', null);
           } else {
             cordovaHTTP.get(url, {}, headers, function (response) {
