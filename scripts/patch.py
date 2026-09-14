@@ -57,7 +57,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (防盗链 + 顶栏更新角标 + 动态焦点复原 + 遥控器菜单) =================
+# ================= 1. 注入 index.html (防盗链 + 顶栏角标更新 + 永久安全焦点 + 遥控器菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -118,8 +118,11 @@ cordova_init_template = r"""
                     author: 'CUB'
                 });
                 localStorage.setItem('plugins', JSON.stringify(savedPlugins));
+                console.log('[Init] 成功预装 TMDB 代理插件:', defaultPluginUrl);
             }
-        } catch (e) {}
+        } catch (e) {
+            console.log('[Init] 预装插件检测跳过:', e);
+        }
 
         // --- 安全清理 WebView 缓存后退出 ---
         function cleanCacheAndExit() {
@@ -140,8 +143,11 @@ cordova_init_template = r"""
                             }
                         };
                         entries.forEach(function (entry) {
-                            if (entry.isDirectory) entry.removeRecursively(onFinish, onFinish);
-                            else entry.remove(onFinish, onFinish);
+                            if (entry.isDirectory) {
+                                entry.removeRecursively(onFinish, onFinish);
+                            } else {
+                                entry.remove(onFinish, onFinish);
+                            }
                         });
                     }, function () {
                         if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
@@ -247,7 +253,7 @@ cordova_init_template = r"""
                 aston_menu_check_update_descr: {
                     zh: '在线检查是否有新版本 APK', en: 'Check for latest APK online', ru: 'Проверить наличие нового APK', uk: 'Перевірити новий APK',
                     be: 'Праверыць новы APK анлайн', bg: 'Онлайн проверка за нов APK', cs: 'Zkontrolovat novou verzi online', fr: 'Vérifier la dernière version',
-                    he: 'בדוק גרסה חדשה ברשת', pl: 'Sprawdź nową wersję online', pt: 'Verificar nova versão online', ro: 'Verifică versiunea nouă online'
+                    he: 'בדוק גרסה חדשה ברשת', pl: 'Sprawdź nową wersję online', pt: 'Verificar nova版本 online', ro: 'Verifică versiunea nouă online'
                 },
                 aston_menu_reload: {
                     zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити',
@@ -284,12 +290,23 @@ cordova_init_template = r"""
             window._aston_menu_lang_inited = true;
         }
 
-        // --- 弹出版本详情与确认升级对话框（支持动态焦点准确还原） ---
-        function showUpdateDialog(info, dlUrl, showVer) {
+        // --- 弹出版本详情与确认升级对话框（彻底杜绝幽灵控制器死锁） ---
+        function showUpdateDialog(info, dlUrl, showVer, fromHead) {
             initAstonI18n();
             if (window.Lampa && Lampa.Select) {
-                // 【核心改进】：在弹窗打开前，准确记录当前激活的控制器名称（content/head/menu/settings等）
-                var controller_enabled = (Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'content';
+                // 【核心修复】：优先判定是否来自顶栏；如果来自菜单，一律以永久存活的 'content' 兜底，坚决避开临时死掉的 'select'
+                var safeTarget = fromHead ? 'head' : 'content';
+                
+                var active = Lampa.Controller && Lampa.Controller.enabled();
+                if (active && active.name && active.name !== 'select' && active.name !== 'modal') {
+                    safeTarget = active.name; // 只有在属于永久控制器时才记忆它
+                }
+
+                var doRestoreFocus = function () {
+                    if (window.Lampa && Lampa.Controller) {
+                        Lampa.Controller.toggle(safeTarget);
+                    }
+                };
 
                 Lampa.Select.show({
                     title: t('aston_update_found', '发现新版本') + ' ' + showVer,
@@ -304,25 +321,15 @@ cordova_init_template = r"""
                         {
                             title: t('aston_update_later', '稍后再说'),
                             subtitle: '',
-                            onSelect: function () {
-                                // 点击“稍后再说”，精准返回之前的焦点
-                                if (Lampa.Controller) {
-                                    Lampa.Controller.toggle(controller_enabled);
-                                }
-                            }
+                            onSelect: doRestoreFocus
                         }
                     ],
-                    onBack: function () {
-                        // 按遥控器返回键，同样精准返回之前的焦点
-                        if (Lampa.Controller) {
-                            Lampa.Controller.toggle(controller_enabled);
-                        }
-                    }
+                    onBack: doRestoreFocus
                 });
             }
         }
 
-        // --- 在顶栏 Header 插入采用 currentColor 的图标与 hover:enter 绑定 ---
+        // --- 在顶栏 Header .open--search 之前插入更新图标 ---
         function renderHeaderUpdateBadge(info, dlUrl, showVer) {
             if (document.getElementById('aston_header_update_btn')) return;
 
@@ -342,7 +349,7 @@ cordova_init_template = r"""
                 '</svg>' +
                 '<span class="aston-update-dot"></span>';
 
-            // 【核心改动】：精准插入到 .open--search 搜索按钮的前面
+            // 精准插入到 .open--search 搜索按钮之前
             var searchBtn = targetHeader.querySelector('.open--search');
             if (searchBtn) {
                 targetHeader.insertBefore(btn, searchBtn);
@@ -353,7 +360,7 @@ cordova_init_template = r"""
             var onTrigger = function (e) {
                 if (e && e.preventDefault) e.preventDefault();
                 if (e && e.stopPropagation) e.stopPropagation();
-                showUpdateDialog(info, dlUrl, showVer);
+                showUpdateDialog(info, dlUrl, showVer, true); // 标明是从顶栏触发
             };
 
             if (window.$) {
@@ -392,7 +399,7 @@ cordova_init_template = r"""
                             var showVer = info.versionName || info.version || ('Build ' + info.versionCode);
 
                             if (isManual) {
-                                showUpdateDialog(info, dlUrl, showVer);
+                                showUpdateDialog(info, dlUrl, showVer, false);
                             } else {
                                 renderHeaderUpdateBadge(info, dlUrl, showVer);
                             }
@@ -420,7 +427,7 @@ cordova_init_template = r"""
             xhr.send();
         }
 
-        // --- 弹出快捷操作菜单（支持动态焦点准确还原） ---
+        // --- 弹出快捷操作菜单（永远安全回到 content 海报层） ---
         function triggerAstonQuickMenu() {
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
                 return;
@@ -428,9 +435,6 @@ cordova_init_template = r"""
 
             if (window.Lampa && Lampa.Select) {
                 initAstonI18n();
-
-                // 【核心改进】：在菜单打开前，同样准确记录当前激活的控制器
-                var controller_enabled = (Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'content';
 
                 Lampa.Select.show({
                     title: t('aston_menu_title', '快捷菜单'),
@@ -458,16 +462,16 @@ cordova_init_template = r"""
                         }
                     ],
                     onBack: function () {
-                        // 按遥控器返回键，安全还给原本的控制器
+                        // 永远安全回到海报区，绝不迷路
                         if (Lampa.Controller) {
-                            Lampa.Controller.toggle(controller_enabled);
+                            Lampa.Controller.toggle('content');
                         }
                     }
                 });
             }
         }
 
-        // 监听遥控器设置键(0)及标准 82 / 93
+        // 监听遥控器按键：code === 0（设置键）及标准 82 / 93
         window.addEventListener('keydown', function (e) {
             var code = e.keyCode || e.which;
             if (code === 0 || code === 82 || code === 93) {
@@ -477,7 +481,7 @@ cordova_init_template = r"""
             }
         }, true);
 
-        // Cordova 初始化后等待 Lampa 顶栏就绪，触发静默检测
+        // Cordova 初始化
         document.addEventListener('deviceready', function () {
             if (document.readyState === 'complete') {
                 if (navigator.splashscreen) navigator.splashscreen.hide();
@@ -487,7 +491,7 @@ cordova_init_template = r"""
                 });
             }
 
-            // 确保状态栏隐藏
+            // 隐藏状态栏
             if (window.StatusBar) {
                 window.StatusBar.hide();
             }
@@ -496,7 +500,7 @@ cordova_init_template = r"""
                 triggerAstonQuickMenu();
             }, false);
 
-            // 侦测顶栏就绪后触发检测挂载图标
+            // 智能侦测：当 Lampa 顶栏完全渲染好后，自动静默检测并挂载角标
             var checkHeaderTimer = setInterval(function () {
                 if (document.querySelector('.head__actions') || document.querySelector('.head')) {
                     clearInterval(checkHeaderTimer);
@@ -519,7 +523,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", "<head>\n" + cordova_init_code, 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入动态焦点还原、顶栏角标更新与防盗链")
+    print("[Success] index.html 成功注入防幽灵死锁、顶栏角标更新与防盗链")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -950,4 +954,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 23 条规则校验 100% 通过，动态焦点记忆与顶栏角标就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，防幽灵死锁焦点保护已就绪！准许打包 APK。\n")
