@@ -46,11 +46,13 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/yumata/lampa.git upstream_code
 
-      # 4. 执行 Python 脚本完成注入与方法替换（传入 NTFY_TOPIC）
+      # 4. 执行 Python 脚本完成注入与方法替换（传入 NTFY_TOPIC、仓库名与构建号）
       - name: Patch Lampa Code
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          REPO_NAME: ${{ github.repository }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           python3 scripts/patch.py
 
@@ -91,7 +93,7 @@ jobs:
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "build-tools;30.0.3" "platforms;android-30" "platforms;android-29"
 
-      # 6. 初始化 Cordova 工程、安装插件、还原证书并打包 Release APK
+      # 6. 初始化 Cordova 工程、安装插件、生成包含子版本号的版本名并打包 Release APK
       - name: Setup Cordova & Build Signed Release APK
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
@@ -110,20 +112,22 @@ jobs:
             echo "Successfully loaded custom config.xml from repository root."
           fi
 
-          # ========== 自动同步 config.xml 版本号与 versionCode ==========
-          APP_VERSION=$(sed -n 's/.*<widget[^>]*version="\([^"]*\)".*/\1/p' config.xml | head -n 1)
-          if [ -z "$APP_VERSION" ]; then APP_VERSION="3.3.3"; fi
-
+          # ========== 自动提取主版本并拼接子版本号（如 3.3.3.38） ==========
+          RAW_VERSION=$(sed -n 's/.*<widget[^>]*version="\([^"]*\)".*/\1/p' config.xml | head -n 1)
+          if [ -z "$RAW_VERSION" ]; then RAW_VERSION="3.3.3"; fi
+          # 提取主版本前三位（例如 3.3.3）
+          BASE_VERSION=$(echo "$RAW_VERSION" | awk -F. '{print $1"."$2"."$3}')
+          
           VERSION_CODE="${{ github.run_number }}"
+          # 规范生成带子版本的完整版本名：3.3.3.38
+          FULL_VERSION="${BASE_VERSION}.${VERSION_CODE}"
 
-          if grep -q "android-versionCode=" config.xml; then
-            sed -i "s/android-versionCode=\"[^\"]*\"/android-versionCode=\"$VERSION_CODE\"/g" config.xml
-          else
-            sed -i "s/<widget /<widget android-versionCode=\"$VERSION_CODE\" /g" config.xml
-          fi
+          # 注入带子版本号的完整版本名到 config.xml
+          sed -i "s/version=\"[^\"]*\"/version=\"$FULL_VERSION\" android-versionCode=\"$VERSION_CODE\"/g" config.xml
 
-          echo "APP_VERSION=$APP_VERSION" >> $GITHUB_ENV
-          echo "Synchronized version: $APP_VERSION (versionCode: $VERSION_CODE)"
+          echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          echo "Synchronized version name: $FULL_VERSION (versionCode: $VERSION_CODE)"
           # ===============================================================
 
           rm -rf www/*
@@ -172,15 +176,15 @@ jobs:
           # 构建已签名的 Release APK
           cordova build android --release --buildConfig=build.json -- --packageType=apk
 
-          # 精简重命名生成的 APK：lampa-v3.3.3-b8.apk
-          mv platforms/android/app/build/outputs/apk/release/app-release.apk platforms/android/app/build/outputs/apk/release/lampa-v${APP_VERSION}-b${{ github.run_number }}.apk
+          # 精简重命名生成的 APK：lampa-v3.3.3.38.apk
+          mv platforms/android/app/build/outputs/apk/release/app-release.apk platforms/android/app/build/outputs/apk/release/lampa-v${FULL_VERSION}.apk
 
       # 7. 上传到 Actions Artifacts
       - name: Upload Artifact
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: lampa-v${{ env.APP_VERSION }}-b${{ github.run_number }}
+          name: lampa-v${{ env.FULL_VERSION }}
           path: lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
 
       # 8. 自动发布到 GitHub Releases（直链下载）
@@ -188,25 +192,25 @@ jobs:
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.APP_VERSION }}-b${{ github.run_number }}
-          name: Lampa v${{ env.APP_VERSION }} (Build ${{ github.run_number }})
+          tag_name: v${{ env.FULL_VERSION }}
+          name: Lampa v${{ env.FULL_VERSION }}
           body: |
             ### Lampa 自动构建完成
             - **应用包名**：`org.aston.lampa`
-            - **应用版本**：`v${{ env.APP_VERSION }}`
-            - **构建编号**：`Build ${{ github.run_number }}` (versionCode: `${{ github.run_number }}`)
+            - **版本名 (versionName)**：`v${{ env.FULL_VERSION }}`
+            - **构建编号 (versionCode)**：`${{ env.VERSION_CODE }}`
             - **上游 Commit**：[${{ steps.check_upstream.outputs.latest_sha }}](https://github.com/yumata/lampa/commit/${{ steps.check_upstream.outputs.latest_sha }})
-            - **状态**：已签名 Release 正式版，支持覆盖安装升级。
+            - **状态**：已签名 Release 正式版，支持在线覆盖升级。
           files: |
             lampa_app/platforms/android/app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. 自动将最新构建信息更新至 README.md 并生成 version.json（已加入 lampa-app/LAMPA）
-      - name: Update README and Generate version.json
+      # 9. 自动生成规范的 version.json 并更新 README.md
+      - name: Generate version.json & Update README
         if: steps.check_upstream.outputs.should_run == 'true'
         env:
-          APP_VERSION: ${{ env.APP_VERSION }}
+          FULL_VERSION: ${{ env.FULL_VERSION }}
           RUN_NUMBER: ${{ github.run_number }}
           UPSTREAM_SHA: ${{ steps.check_upstream.outputs.latest_sha }}
           REPO: ${{ github.repository }}
@@ -218,19 +222,21 @@ jobs:
 
           repo = os.environ['REPO']
           run_num = int(os.environ['RUN_NUMBER'])
-          version_tag = f\"v{os.environ['APP_VERSION']}\"
-          version = f\"{version_tag} (Build {run_num})\"
+          full_ver = os.environ['FULL_VERSION']
+          version_tag = f\"v{full_ver}\"
           sha = os.environ['UPSTREAM_SHA']
           short_sha = sha[:7] if sha and sha != 'null' else 'unknown'
-          apk_name = f\"lampa-v{os.environ['APP_VERSION']}-b{run_num}.apk\"
+          apk_name = f\"lampa-v{full_ver}.apk\"
           
-          direct_url = f\"https://github.com/{repo}/releases/download/{version_tag}-b{run_num}/{apk_name}\"
+          # 1. 官方直链与加速镜像
+          direct_url = f\"https://github.com/{repo}/releases/download/{version_tag}/{apk_name}\"
           mirror_url = f\"https://ghfast.top/{direct_url}\"
           build_date = os.popen(\"TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M (UTC+8)'\").read().strip()
 
-          # --- 1. 生成双通道 version.json ---
+          # --- 生成供电视端精准比对的规范 version.json ---
           ver_data = {
               'version': version_tag,
+              'versionName': full_ver,
               'versionCode': run_num,
               'apk_name': apk_name,
               'direct_url': direct_url,
@@ -240,51 +246,51 @@ jobs:
           }
           with open('version.json', 'w', encoding='utf-8') as f:
               json.dump(ver_data, f, indent=2, ensure_ascii=False)
+          print('[Success] 成功生成包含子版本的规范 version.json！')
 
-          # --- 2. 自身构建信息 ---
+          # --- 更新 README.md 本地构建信息 ---
           my_block = '\n'.join([
               '<!-- LATEST_BUILD_INFO_START -->',
               '### 🚀 Latest Automated Build',
-              f'- **App Version**: \`{version}\`',
+              f'- **App Version**: \`{version_tag}\`',
               f'- **Build Date**: \`{build_date}\`',
               f'- **Upstream Source**: [{short_sha}](https://github.com/yumata/lampa/commit/{sha})',
               f'- **Direct Download**: [📦 {apk_name}]({direct_url})',
               '<!-- LATEST_BUILD_INFO_END -->'
           ])
 
-          # --- 3. 抓取并聚合目标仓库（包含 lampa-app/LAMPA） ---
-          RELATED_REPOS = [
-              'lampa-app/LAMPA'
-          ]
+          # --- 仅抓取并追踪 lampa-app/LAMPA ---
+          target = 'lampa-app/LAMPA'
           tz_cst = timezone(timedelta(hours=8))
-          related_sections = ['<!-- RELATED_RELEASES_START -->', '### 🌐 Related Lampa Community Builds']
+          related_sections = [
+              '<!-- RELATED_RELEASES_START -->',
+              '### 🌐 Related Lampa Community Builds'
+          ]
 
-          for target in RELATED_REPOS:
-              api_url = f'https://api.github.com/repos/{target}/releases/latest'
-              req = urllib.request.Request(api_url)
-              req.add_header('Authorization', f'Bearer {os.environ[\"GH_TOKEN\"]}')
-              req.add_header('User-Agent', 'GitHub-Actions-Script')
-              req.add_header('Accept', 'application/vnd.github.v3+json')
-              try:
-                  with urllib.request.urlopen(req, timeout=10) as response:
-                      data = json.loads(response.read().decode('utf-8'))
-                      tag = data.get('tag_name', 'unknown')
-                      rel_name = data.get('name') or tag
-                      html_url = data.get('html_url', f'https://github.com/{target}/releases')
-                      pub_at = data.get('published_at', '')
-                      date_str = datetime.fromisoformat(pub_at.replace('Z', '+00:00')).astimezone(tz_cst).strftime('%Y-%m-%d %H:%M (UTC+8)') if pub_at else 'N/A'
-                      apk_links = [f\"[📦 {a['name']}]({a['browser_download_url']})\" for a in data.get('assets', []) if a.get('name', '').endswith('.apk')]
-                      download_text = ' / '.join(apk_links) if apk_links else f'[View Assets]({html_url})'
+          api_url = f'https://api.github.com/repos/{target}/releases/latest'
+          req = urllib.request.Request(api_url)
+          req.add_header('Authorization', f'Bearer {os.environ[\"GH_TOKEN\"]}')
+          req.add_header('User-Agent', 'GitHub-Actions-Script')
+          req.add_header('Accept', 'application/vnd.github.v3+json')
+          try:
+              with urllib.request.urlopen(req, timeout=10) as response:
+                  data = json.loads(response.read().decode('utf-8'))
+                  tag = data.get('tag_name', 'unknown')
+                  rel_name = data.get('name') or tag
+                  html_url = data.get('html_url', f'https://github.com/{target}/releases')
+                  pub_at = data.get('published_at', '')
+                  date_str = datetime.fromisoformat(pub_at.replace('Z', '+00:00')).astimezone(tz_cst).strftime('%Y-%m-%d %H:%M (UTC+8)') if pub_at else 'N/A'
+                  apk_links = [f\"[📦 {a['name']}]({a['browser_download_url']})\" for a in data.get('assets', []) if a.get('name', '').endswith('.apk')]
+                  download_text = ' / '.join(apk_links) if apk_links else f'[View Assets]({html_url})'
 
-                      related_sections.append(f'\n#### 📦 [{target}](https://github.com/{target})')
-                      related_sections.append(f'- **App Version**: \`{tag}\` ({rel_name})')
-                      related_sections.append(f'- **Release Date**: \`{date_str}\`')
-                      # 恢复你之前需要的 Release Notes 直链：
-                      related_sections.append(f'- **Release Notes**: [View Details]({html_url})')
-                      related_sections.append(f'- **Direct Download**: {download_text}')
-                      print(f'[Success] 已抓取 {target} 最新 Release: {tag}')
-              except Exception as e:
-                  print(f'[Warning] 抓取 {target} 失败: {e}')
+                  related_sections.append(f'\n#### 📦 [{target}](https://github.com/{target})')
+                  related_sections.append(f'- **App Version**: \`{tag}\` ({rel_name})')
+                  related_sections.append(f'- **Release Date**: \`{date_str}\`')
+                  related_sections.append(f'- **Release Notes**: [View Details]({html_url})')
+                  related_sections.append(f'- **Direct Download**: {download_text}')
+                  print(f'[Success] 已抓取 {target} 最新 Release: {tag}')
+          except Exception as e:
+              print(f'[Warning] 抓取 {target} 失败: {e}')
 
           related_sections.append('<!-- RELATED_RELEASES_END -->')
           related_block = '\n'.join(related_sections)
@@ -298,18 +304,18 @@ jobs:
                   content = re.sub(r'<!-- RELATED_RELEASES_START -->[\s\S]*?<!-- RELATED_RELEASES_END -->', related_block, content)
               with open('README.md', 'w', encoding='utf-8') as f:
                   f.write(content)
-              print('[Success] README.md 更新完成，已包含 lampa-app/LAMPA 的 Release Notes！')
+              print('[Success] README.md 与 version.json 准备就绪！')
           "
 
-      # 10. 一并提交 .last_commit 与 README.md 推回仓库
-      - name: Update Last Commit Record & README
+      # 10. 保证将 .last_commit、README.md 与 version.json 自动推回仓库
+      - name: Push Updates to Repository
         if: steps.check_upstream.outputs.should_run == 'true'
         run: |
           echo "${{ steps.check_upstream.outputs.latest_sha }}" > .last_commit
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .last_commit README.md
-          git commit -m "chore: sync upstream & update build info in README [skip ci]" || true
+          git add .last_commit README.md version.json
+          git commit -m "chore: auto sync, update version.json & README [skip ci]" || true
           git push
 
       # 11. 自动清理旧 Release，永远只保留最新的 3 个版本
