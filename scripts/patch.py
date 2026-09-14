@@ -139,7 +139,7 @@ cordova_init_template = r"""
             return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
         }
 
-        // --- 全语言大屏下载与系统安装器唤起 ---
+        // --- 高清大屏下载与系统安装器唤起（深度修复解析错误与权限） ---
         function startUpdateDownload(downloadUrl, versionName) {
             if (window.Lampa && Lampa.Noty) {
                 Lampa.Noty.show(t('aston_update_start', '开始下载更新包...'));
@@ -165,29 +165,49 @@ cordova_init_template = r"""
                     }
                     var blob = xhr.response;
 
-                    window.resolveLocalFileSystemURL(cordova.file.cacheDirectory, function (dirEntry) {
-                        dirEntry.getFile('update.apk', { create: true, overwrite: true }, function (fileEntry) {
-                            fileEntry.createWriter(function (fileWriter) {
-                                fileWriter.onwriteend = function () {
-                                    window.plugins.intentShim.startActivity({
-                                        action: 'android.intent.action.VIEW',
-                                        url: fileEntry.toURL(),
-                                        type: 'application/vnd.android.package-archive',
-                                        flags: [268435456, 1]
-                                    }, function () {}, function (err) {
-                                        if (window.cordova && cordova.InAppBrowser) {
-                                            cordova.InAppBrowser.open(downloadUrl, '_system');
-                                        }
-                                    });
-                                };
-                                fileWriter.write(blob);
+                    // 1. 优先存入外部缓存目录，保证系统安装器拥有读取权限
+                    var targetDir = cordova.file.externalCacheDirectory || cordova.file.cacheDirectory;
+
+                    window.resolveLocalFileSystemURL(targetDir, function (dirEntry) {
+                        // 2. 彻底粉碎删除旧文件，防止末尾残留碎片引发解析错误
+                        dirEntry.getFile('update.apk', { create: false }, function (oldFile) {
+                            oldFile.remove(function () {
+                                writeNewApk(dirEntry, blob, downloadUrl);
+                            }, function () {
+                                writeNewApk(dirEntry, blob, downloadUrl);
                             });
+                        }, function () {
+                            writeNewApk(dirEntry, blob, downloadUrl);
                         });
                     });
                 } else {
                     if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_failed', '下载失败') + ': ' + xhr.status);
                 }
             };
+
+            // 写入全新 APK 并唤起安装
+            function writeNewApk(dirEntry, blob, fallbackUrl) {
+                dirEntry.getFile('update.apk', { create: true, overwrite: true }, function (fileEntry) {
+                    fileEntry.createWriter(function (fileWriter) {
+                        fileWriter.onwriteend = function () {
+                            // 3. 使用 nativeURL 原生绝对物理路径唤起系统安装器
+                            var installUrl = fileEntry.nativeURL || fileEntry.toURL();
+                            window.plugins.intentShim.startActivity({
+                                action: 'android.intent.action.VIEW',
+                                url: installUrl,
+                                type: 'application/vnd.android.package-archive',
+                                flags: [268435456, 1] // FLAG_ACTIVITY_NEW_TASK | FLAG_GRANT_READ_URI_PERMISSION
+                            }, function () {}, function (err) {
+                                // 降级备用：调用系统浏览器下载
+                                if (window.cordova && cordova.InAppBrowser) {
+                                    cordova.InAppBrowser.open(fallbackUrl, '_system');
+                                }
+                            });
+                        };
+                        fileWriter.write(blob);
+                    });
+                });
+            }
 
             xhr.onerror = function () {
                 if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_error', '下载出错，请检查网络连接'));
