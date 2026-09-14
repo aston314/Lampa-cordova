@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import json
 import urllib.request
 import urllib.parse
 
@@ -57,7 +58,38 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (防盗链 + 顶栏更新角标 + 双联动进度 + 极简菜单) =================
+# ================= 1. 读取并解析 plugins/plugins.json 远程预装插件配置 =================
+REMOTE_PLUGINS_FILE = os.path.join("plugins", "plugins.json")
+default_plugins_list = []
+
+if os.path.isfile(REMOTE_PLUGINS_FILE):
+    try:
+        with open(REMOTE_PLUGINS_FILE, "r", encoding="utf-8") as f:
+            loaded_data = json.load(f)
+            if isinstance(loaded_data, list):
+                for p in loaded_data:
+                    # 严格校验：只有 status 为 1 且包含 url 的插件才会被激活预装，status 为 0 的作为冗余保留不载入
+                    if isinstance(p, dict) and p.get("status") == 1 and p.get("url"):
+                        default_plugins_list.append(p)
+                        print(f"[Success] 读取预装远程插件: {p.get('name', '未命名')} -> {p.get('url')}")
+    except Exception as e:
+        print(f"[Warning] 读取 plugins/plugins.json 异常: {e}")
+else:
+    # 保底方案：如果用户尚未创建 plugins.json，默认预装 TMDB 代理
+    print("[Info] 未找到 plugins/plugins.json，使用默认 TMDB 代理插件作为兜底。")
+    default_plugins_list = [
+        {
+            "name": "TMDB Proxy",
+            "url": "http://cub.red/plugin/tmdb-proxy",
+            "author": "CUB",
+            "status": 1
+        }
+    ]
+
+DEFAULT_PLUGINS_JSON_STR = json.dumps(default_plugins_list, ensure_ascii=False)
+
+
+# ================= 2. 注入 index.html (防盗链 + 预装插件库 + 顶栏更新角标 + 动态圆环进度 + 极简菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -104,7 +136,7 @@ cordova_init_template = r"""
         display: none;
         pointer-events: none;
     }
-    /* 遥控器选中时：纯白底色 + 黑色图标，与 Lampa 顶栏风格完全统一 */
+    /* 遥控器选中时：纯白底色 + 黑色图标，与 Lampa 顶栏完全统一 */
     .head__action.aston-update-action.focus {
         background: #fff !important;
         color: #000 !important;
@@ -116,24 +148,30 @@ cordova_init_template = r"""
         window.CURRENT_BUILD_CODE = __BUILD_NUMBER__;
         var REPO_PATH = "__REPO_NAME__";
 
-        // --- 预装插件：自动注入 TMDB 代理插件 ---
+        // --- 预装远程插件系统（从 plugins/plugins.json 自动注入多插件） ---
         try {
-            var defaultPluginUrl = 'http://cub.red/plugin/tmdb-proxy';
+            var defaultPlugins = __DEFAULT_PLUGINS_JSON__;
             var savedPlugins = JSON.parse(localStorage.getItem('plugins') || '[]');
-            var exists = savedPlugins.some(function (p) {
-                return (typeof p === 'string' && p === defaultPluginUrl) || (p && p.url === defaultPluginUrl);
-            });
-            if (!exists) {
-                savedPlugins.push({
-                    url: defaultPluginUrl,
-                    status: 1,
-                    name: 'TMDB Proxy',
-                    author: 'CUB'
+            var modified = false;
+
+            defaultPlugins.forEach(function (dp) {
+                if (!dp || !dp.url || dp.status === 0) return;
+                var exists = savedPlugins.some(function (p) {
+                    return (typeof p === 'string' && p === dp.url) || (p && p.url === dp.url);
                 });
+                if (!exists) {
+                    savedPlugins.push(dp);
+                    modified = true;
+                    console.log('[Init] 成功预装插件:', dp.name || dp.url);
+                }
+            });
+
+            if (modified) {
                 localStorage.setItem('plugins', JSON.stringify(savedPlugins));
-                console.log('[Init] 成功预装 TMDB 代理插件:', defaultPluginUrl);
             }
-        } catch (e) {}
+        } catch (e) {
+            console.log('[Init] 预装插件注入异常:', e);
+        }
 
         // --- 安全清理 WebView 缓存后退出 ---
         function cleanCacheAndExit() {
@@ -176,7 +214,7 @@ cordova_init_template = r"""
             return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
         }
 
-        // --- 双联动下载：环形进度条 + Noty 实时文字提示 ---
+        // --- 深度修复安装包解析错误与外部存储路径 ---
         function startUpdateDownload(downloadUrl, versionName) {
             var dot = document.getElementById('aston_update_dot');
             var ringSvg = document.getElementById('aston_update_ring_svg');
@@ -308,7 +346,7 @@ cordova_init_template = r"""
             window._aston_menu_lang_inited = true;
         }
 
-        // --- 弹出版本详情与确认升级对话框（保留精炼的 controller_enabled 焦点复原） ---
+        // --- 弹出版本详情与确认升级对话框 ---
         function showUpdateDialog(info, dlUrl, showVer) {
             initAstonI18n();
             if (window.Lampa && Lampa.Select) {
@@ -341,7 +379,7 @@ cordova_init_template = r"""
             }
         }
 
-        // --- 在顶栏 Header .open--search 之前插入带环形进度条的更新图标（加 150ms 延时防穿透） ---
+        // --- 在顶栏 Header .open--search 之前插入带环形进度条的更新图标 ---
         function renderHeaderUpdateBadge(info, dlUrl, showVer) {
             if (document.getElementById('aston_header_update_btn')) return;
 
@@ -354,7 +392,6 @@ cordova_init_template = r"""
             btn.setAttribute('tabindex', '0');
             btn.setAttribute('title', '发现新版本');
 
-            // 包含：SVG 图标 + 红点角标 + 外圈 360° 环形进度条
             btn.innerHTML = 
                 '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">' +
                 '  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>' +
@@ -377,12 +414,10 @@ cordova_init_template = r"""
                 if (e && e.preventDefault) e.preventDefault();
                 if (e && e.stopPropagation) e.stopPropagation();
 
-                // 500ms 防重复互锁
                 if (isClicking) return;
                 isClicking = true;
                 setTimeout(function () { isClicking = false; }, 500);
 
-                // 延时 150 毫秒等遥控器 OK 键完全松开后再弹窗，彻底杜绝秒下载！
                 setTimeout(function () {
                     showUpdateDialog(info, dlUrl, showVer);
                 }, 150);
@@ -428,7 +463,7 @@ cordova_init_template = r"""
             xhr.send();
         }
 
-        // --- 弹出遥控器设置键快捷菜单（极致精炼：只保留重新加载与安全退出） ---
+        // --- 弹出遥控器设置键快捷菜单（重新加载 + 安全退出） ---
         function triggerAstonQuickMenu() {
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
                 return;
@@ -456,7 +491,6 @@ cordova_init_template = r"""
                         }
                     ],
                     onBack: function () {
-                        // 退出快捷菜单永远安全还给海报区
                         if (Lampa.Controller) {
                             Lampa.Controller.toggle('content');
                         }
@@ -485,7 +519,6 @@ cordova_init_template = r"""
                 });
             }
 
-            // 确保状态栏隐藏
             if (window.StatusBar) {
                 window.StatusBar.hide();
             }
@@ -510,21 +543,26 @@ cordova_init_template = r"""
 </script>
 """
 
-# 用精准替换注入变量
-cordova_init_code = cordova_init_template.replace("__BUILD_NUMBER__", str(BUILD_NUMBER)).replace("__REPO_NAME__", REPO_NAME)
+# 用精准替换注入变量（包含动态解析后的插件 JSON 字符串）
+cordova_init_code = (
+    cordova_init_template
+    .replace("__BUILD_NUMBER__", str(BUILD_NUMBER))
+    .replace("__REPO_NAME__", REPO_NAME)
+    .replace("__DEFAULT_PLUGINS_JSON__", DEFAULT_PLUGINS_JSON_STR)
+)
 
 if "<head>" in html_content:
     html_content = html_content.replace("<head>", "<head>\n" + cordova_init_code, 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入双联动环形进度更新、防盗链与极简菜单")
+    print("[Success] index.html 成功注入多插件预装库、顶栏更新角标与防盗链")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
     sys.exit(1)
 
 
-# ================= 2. 自动遍历并批量内嵌所有语言包 =================
+# ================= 3. 自动遍历并批量内嵌所有语言包 =================
 lang_dir = os.path.join(UPSTREAM_DIR, "lang")
 all_embedded_langs = {}
 
@@ -561,14 +599,12 @@ ALL_LANG_EMBEDDED_CODE = (
 )
 
 
-# ================= 3. 动态扫描本地 plugins 目录（超强防空目录、防 .gitkeep 干扰） =================
+# ================= 4. 动态扫描本地 plugins 目录（超强防空目录、防 .gitkeep 干扰） =================
 LOCAL_PLUGINS_DIR = "plugins"
 local_plugin_pushes = ["puts.push('./plugins/modification.js');"]
 
-# 严格判断是否为真实有效目录
 if os.path.isdir(LOCAL_PLUGINS_DIR):
     for filename in sorted(os.listdir(LOCAL_PLUGINS_DIR)):
-        # 严格过滤：必须是 .js 文件，且排除以 . 开头的隐藏文件（如 .gitkeep、.DS_Store）
         if filename.endswith(".js") and not filename.startswith("."):
             local_plugin_pushes.append(f"puts.push('./plugins/{filename}');")
             print(f"[Success] 发现本地有效插件: {filename}，已加入自动加载列表！")
@@ -576,7 +612,7 @@ if os.path.isdir(LOCAL_PLUGINS_DIR):
 LOCAL_PLUGINS_INJECT_CODE = "\n        ".join(local_plugin_pushes)
 
 
-# ================= 4. 定义大段代码模板 =================
+# ================= 5. 定义大段代码模板 =================
 
 CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
 
@@ -796,7 +832,7 @@ VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         };"""
 
 
-# ================= 5. 严格替换规则列表（共 24 项） =================
+# ================= 6. 严格替换规则列表（共 24 项） =================
 STRICT_RULES = [
     {
         "name": "退出代码替换 Android.exit()",
@@ -968,4 +1004,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 24 条规则校验 100% 通过，本地插件库与顶栏环形更新已就绪！准许打包 APK。\n")
+print("[Success] 所有 24 条规则校验 100% 通过，多远程插件配置库就绪！准许打包 APK。\n")
