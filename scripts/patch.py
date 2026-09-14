@@ -57,7 +57,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (防盗链 + 预装插件 + 缓存清理 + 全响应在线更新 + 遥控器设置键菜单) =================
+# ================= 1. 注入 index.html (防盗链 + 预装插件 + 缓存清理 + 全语言下载与更新 + 遥控器设置键菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -68,6 +68,7 @@ if not os.path.exists(html_file):
 with open(html_file, "r", encoding="utf-8") as f:
     html_content = f.read()
 
+# 包含防盗链 meta、预装插件、缓存清理、全语言下载与遥控器菜单
 cordova_init_template = r"""
 <meta name="referrer" content="no-referrer" />
 <script src="cordova.js"></script>
@@ -133,10 +134,15 @@ cordova_init_template = r"""
             }
         }
 
-        // --- 高清大屏下载与系统安装器唤起 ---
+        // 多语言获取函数
+        function t(key, fallback) {
+            return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
+        }
+
+        // --- 全语言大屏下载与系统安装器唤起 ---
         function startUpdateDownload(downloadUrl, versionName) {
             if (window.Lampa && Lampa.Noty) {
-                Lampa.Noty.show('开始下载更新包...');
+                Lampa.Noty.show(t('aston_update_start', '开始下载更新包...'));
             }
 
             var xhr = new XMLHttpRequest();
@@ -148,14 +154,14 @@ cordova_init_template = r"""
                     var pct = Math.round((e.loaded / e.total) * 100);
                     var loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
                     var totalMB = (e.total / (1024 * 1024)).toFixed(1);
-                    Lampa.Noty.show('正在下载 ' + versionName + ': ' + pct + '% (' + loadedMB + '/' + totalMB + ' MB)');
+                    Lampa.Noty.show(t('aston_update_downloading', '正在下载') + ' ' + versionName + ': ' + pct + '% (' + loadedMB + '/' + totalMB + ' MB)');
                 }
             };
 
             xhr.onload = function () {
                 if (xhr.status === 200) {
                     if (window.Lampa && Lampa.Noty) {
-                        Lampa.Noty.show('下载完成，正在唤起系统安装器...');
+                        Lampa.Noty.show(t('aston_update_installing', '下载完成，正在唤起安装器...'));
                     }
                     var blob = xhr.response;
 
@@ -179,30 +185,83 @@ cordova_init_template = r"""
                         });
                     });
                 } else {
-                    if (window.Lampa && Lampa.Noty) Lampa.Noty.show('下载失败: 状态码 ' + xhr.status);
+                    if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_failed', '下载失败') + ': ' + xhr.status);
                 }
             };
 
             xhr.onerror = function () {
-                if (window.Lampa && Lampa.Noty) Lampa.Noty.show('下载出错，请检查网络连接');
+                if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_error', '下载出错，请检查网络连接'));
             };
 
             xhr.send();
         }
 
-        // --- 在线检测更新（强化版：国内极速源 + 每一个动作都有 Noty 反馈） ---
+        // --- 注册 12 种全语言字典 ---
+        function initAstonI18n() {
+            if (window._aston_menu_lang_inited || !window.Lampa || !Lampa.Lang) return;
+            Lampa.Lang.add({
+                aston_menu_title: {
+                    zh: '快捷菜单', en: 'Quick Menu', ru: 'Быстрое меню', uk: 'Швидке меню',
+                    be: 'Хуткае меню', bg: 'Бързо меню', cs: 'Rychlé menu', fr: 'Menu rapide',
+                    he: 'תפריט מהיר', pl: 'Szybkie menu', pt: 'Menu rápido', ro: 'Meniu rapid'
+                },
+                aston_menu_check_update: {
+                    zh: '检查更新', en: 'Check for Updates', ru: 'Проверить обновления', uk: 'Перевірити оновлення',
+                    be: 'Праверыць абнаўленні', bg: 'Проверка за актуализации', cs: 'Zkontrolovat aktualizace', fr: 'Vérifier les mises à jour',
+                    he: 'בדוק עדכונים', pl: 'Sprawdź aktualizacje', pt: 'Verificar atualizações', ro: 'Verifică actualizări'
+                },
+                aston_menu_check_update_descr: {
+                    zh: '在线检查是否有新版本 APK', en: 'Check for latest APK online', ru: 'Проверить наличие нового APK', uk: 'Перевірити новий APK',
+                    be: 'Праверыць новы APK анлайн', bg: 'Онлайн проверка за нов APK', cs: 'Zkontrolovat novou verzi online', fr: 'Vérifier la dernière version',
+                    he: 'בדוק גרסה חדשה ברשת', pl: 'Sprawdź nową wersję online', pt: 'Verificar nova versão online', ro: 'Verifică versiunea nouă online'
+                },
+                aston_menu_reload: {
+                    zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити',
+                    be: 'Перазагрузіць', bg: 'Презареждане', cs: 'Znovu načíst', fr: 'Recharger',
+                    he: 'טעינה מחדש', pl: 'Przeładuj', pt: 'Recarregar', ro: 'Reîncărcare'
+                },
+                aston_menu_reload_descr: {
+                    zh: '刷新当前界面与数据', en: 'Refresh interface and data', ru: 'Обновить интерфейс и данные', uk: 'Оновити інтерфейс та дані',
+                    be: 'Абнавіць інтэрфейс і дадзеныя', bg: 'Опресняване на интерфейса и данните', cs: 'Obnovit rozhraní a data', fr: "Actualiser l'interface et les données",
+                    he: 'רענון הממשק והנתונים', pl: 'Odśwież interfejs i dane', pt: 'Atualizar interface e dados', ro: 'Reîmprospătează interfața și datele'
+                },
+                aston_menu_exit: {
+                    zh: '退出应用', en: 'Exit', ru: 'Выход', uk: 'Вихід',
+                    be: 'Выхад', bg: 'Изход', cs: 'Ukončit', fr: 'Quitter',
+                    he: 'יציאה', pl: 'Wyjście', pt: 'Sair', ro: 'Ieșire'
+                },
+                aston_menu_exit_descr: {
+                    zh: '清理临时缓存并退出 Lampa', en: 'Clean cache and exit Lampa', ru: 'Очистить кэш и выйти из Lampa', uk: 'Очистити кеш та вийти з Lampa',
+                    be: 'Ачысціць кэш і выйсці з Lampa', bg: 'Изчистване на кеша и изход', cs: 'Vymazat mezipaměť a ukončit', fr: 'Vider le cache et quitter',
+                    he: 'ניקוי מטמון ויציאה מ-Lampa', pl: 'Wyczyść pamięć podręczną i wyjdź', pt: 'Limpar cache e sair', ro: 'Curăță memoria cache și ieși'
+                },
+                aston_update_found: { zh: '发现新版本', en: 'New Version Available', ru: 'Доступна новая версия', uk: 'Доступна нова версія', be: 'Даступная новая версія', bg: 'Налична е нова версия', cs: 'Nová verze k dispozici', fr: 'Nouvelle version disponible', he: 'גרסה חדשה זמינה', pl: 'Dostępna nowa wersja', pt: 'Nova versão disponível', ro: 'Versiune nouă disponibilă' },
+                aston_update_now: { zh: '立即更新', en: 'Update Now', ru: 'Обновить', uk: 'Оновити', be: 'Абнавіць', bg: 'Обнови', cs: 'Aktualizovat', fr: 'Mettre à jour', he: 'עדכן עכשיו', pl: 'Aktualizuj', pt: 'Atualizar agora', ro: 'Actualizează acum' },
+                aston_update_later: { zh: '稍后再说', en: 'Later', ru: 'Позже', uk: 'Пізніше', be: 'Пазней', bg: 'По-късно', cs: 'Později', fr: 'Plus tard', he: 'מאוחר יותר', pl: 'Później', pt: 'Mais tarde', ro: 'Mai târziu' },
+                aston_update_start: { zh: '开始下载更新包...', en: 'Starting update download...', ru: 'Запуск загрузки обновления...', uk: 'Початок завантаження оновлення...', be: 'Пачатак загрузкі абнаўлення...', bg: 'Стартиране на изтеглянето...', cs: 'Zahájení stahování...', fr: 'Démarrage du téléchargement...', he: 'מתחיל להוריד עדכון...', pl: 'Rozpoczynanie pobierania...', pt: 'Iniciando download...', ro: 'Se începe descărcarea...' },
+                aston_update_downloading: { zh: '正在下载', en: 'Downloading', ru: 'Загрузка', uk: 'Завантаження', be: 'Загрузка', bg: 'Изтегляне', cs: 'Stahování', fr: 'Téléchargement', he: 'מוריד', pl: 'Pobieranie', pt: 'Baixando', ro: 'Descărcare' },
+                aston_update_installing: { zh: '下载完成，正在唤起系统安装器...', en: 'Downloaded, opening installer...', ru: 'Загружено, запуск установщика...', uk: 'Завантажено, запуск інсталятора...', be: 'Загружана, запуск усталёўшчыка...', bg: 'Изтеглено, отваряне на инсталатора...', cs: 'Staženo, otevírání instalátoru...', fr: "Ouverture de l'installateur...", he: 'הורד, פותח מתקין...', pl: 'Pobrano, otwieranie instalatora...', pt: 'Baixado, abrindo instalador...', ro: 'Descărcat, deschidere instalator...' },
+                aston_update_failed: { zh: '下载失败', en: 'Download failed', ru: 'Ошибка загрузки', uk: 'Помилка завантаження', be: 'Памылка загрузкі', bg: 'Грешка при изтегляне', cs: 'Stahování selhalo', fr: 'Échec du téléchargement', he: 'ההורדה נכשלה', pl: 'Pobieranie nie powiodło się', pt: 'Falha no download', ro: 'Descărcare eșuată' },
+                aston_update_error: { zh: '下载出错，请检查网络连接', en: 'Download error, please check connection', ru: 'Ошибка загрузки, проверьте сеть', uk: 'Помилка завантаження, перевірте мережу', be: 'Памылка загрузкі, праверце сетку', bg: 'Грешка при изтегляне, проверете мрежата', cs: 'Chyba stahování, zkontrolujte síť', fr: 'Erreur de téléchargement, vérifiez le réseau', he: 'שגיאת הורדה, בדוק חיבור לרשת', pl: 'Błąd pobierania, sprawdź połączenie', pt: 'Erro no download, verifique a conexão', ro: 'Eroare de descărcare, verificați rețeaua' },
+                aston_update_latest: { zh: '已经是最新版本', en: 'Already up to date', ru: 'Уже последняя версия', uk: 'Вже остання версія', be: 'Ужо апошняя версія', bg: 'Вече е най-новата версия', cs: 'Již máte nejnovější verzi', fr: 'Déjà à jour', he: 'כבר הגרסה העדכנית ביותר', pl: 'Wersja jest aktualna', pt: 'Já está na versão mais recente', ro: 'Deja la cea mai recentă versiune' },
+                aston_update_checking: { zh: '正在检查更新，请稍候...', en: 'Checking for updates, please wait...', ru: 'Проверка обновлений...', uk: 'Перевірка оновлень...', be: 'Праверка абнаўленняў...', bg: 'Проверка за актуализации...', cs: 'Kontrola aktualizací...', fr: 'Vérification des mises à jour...', he: 'בודק עדכונים...', pl: 'Sprawdzanie aktualizacji...', pt: 'Verificando atualizações...', ro: 'Se verifică actualizările...' },
+                aston_update_sub: { zh: '在线极速下载并覆盖升级', en: 'Download and update online', ru: 'Онлайн загрузка и обновление', uk: 'Онлайн завантаження та оновлення', be: 'Анлайн загрузка і абнаўленне', bg: 'Онлайн изтегляне и обновяване', cs: 'Online stažení a aktualizace', fr: 'Télécharger et mettre à jour en ligne', he: 'הורד ועדכן באופן מקוון', pl: 'Pobierz i zaktualizuj online', pt: 'Baixar e atualizar online', ro: 'Descărcați și actualizați online' }
+            });
+            window._aston_menu_lang_inited = true;
+        }
+
+        // --- 在线检测更新核心函数 ---
         function checkLampaUpdate(isManual) {
+            initAstonI18n();
             var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
             var isZh = (curL === 'zh');
 
-            // 中文用户走国内穿透加速源，避免 jsdelivr / raw.github 在国内被墙
             var checkUrl = isZh 
                 ? 'https://ghfast.top/https://raw.githubusercontent.com/' + REPO_PATH + '/main/version.json?t=' + new Date().getTime()
                 : 'https://raw.githubusercontent.com/' + REPO_PATH + '/main/version.json?t=' + new Date().getTime();
 
-            // 【即点即反馈】：只要是手动点击，立刻弹出提示告诉用户已开始检测
             if (isManual && window.Lampa && Lampa.Noty) {
-                Lampa.Noty.show('正在检查更新，请稍候...');
+                Lampa.Noty.show(t('aston_update_checking', '正在检查更新，请稍候...'));
             }
 
             var xhr = new XMLHttpRequest();
@@ -215,20 +274,21 @@ cordova_init_template = r"""
                         var info = JSON.parse(xhr.responseText);
                         if (info.versionCode > window.CURRENT_BUILD_CODE) {
                             var dlUrl = isZh ? (info.mirror_url || info.direct_url) : (info.direct_url || info.mirror_url);
+                            var showVer = info.versionName || info.version || ('Build ' + info.versionCode);
 
-                            if (window.Lampa && Lampa.Select && Lampa.Lang) {
+                            if (window.Lampa && Lampa.Select) {
                                 Lampa.Select.show({
-                                    title: (Lampa.Lang.translate('aston_update_found') || '发现新版本') + ' ' + info.version + ' (Build ' + info.versionCode + ')',
+                                    title: t('aston_update_found', '发现新版本') + ' ' + showVer,
                                     items: [
                                         {
-                                            title: Lampa.Lang.translate('aston_update_now') || '立即更新',
-                                            subtitle: isZh ? '在线极速下载并覆盖升级' : 'Download and update online',
+                                            title: t('aston_update_now', '立即更新'),
+                                            subtitle: t('aston_update_sub', '在线极速下载并覆盖升级'),
                                             onSelect: function () {
-                                                startUpdateDownload(dlUrl, info.version);
+                                                startUpdateDownload(dlUrl, showVer);
                                             }
                                         },
                                         {
-                                            title: Lampa.Lang.translate('aston_update_later') || '稍后再说',
+                                            title: t('aston_update_later', '稍后再说'),
                                             subtitle: '',
                                             onSelect: function () {}
                                         }
@@ -239,34 +299,24 @@ cordova_init_template = r"""
                                 });
                             }
                         } else {
-                            // 确定是最新版本时，弹窗明确告知！
                             if (isManual && window.Lampa && Lampa.Noty) {
-                                Lampa.Noty.show('当前已经是最新版本 (Build ' + window.CURRENT_BUILD_CODE + ')');
+                                Lampa.Noty.show(t('aston_update_latest', '当前已经是最新版本') + ' (' + (info.versionName || ('Build ' + window.CURRENT_BUILD_CODE)) + ')');
                             }
                         }
                     } catch (e) {
-                        if (isManual && window.Lampa && Lampa.Noty) {
-                            Lampa.Noty.show('解析更新版本数据异常');
-                        }
+                        if (isManual && window.Lampa && Lampa.Noty) Lampa.Noty.show('解析更新版本数据异常');
                     }
                 } else {
-                    // 如果返回了 404 或其他异常状态码，绝不静默，明确报错
-                    if (isManual && window.Lampa && Lampa.Noty) {
-                        Lampa.Noty.show('检查失败: 服务器响应 ' + xhr.status);
-                    }
+                    if (isManual && window.Lampa && Lampa.Noty) Lampa.Noty.show('检查失败: 服务器响应 ' + xhr.status);
                 }
             };
 
             xhr.onerror = function () {
-                if (isManual && window.Lampa && Lampa.Noty) {
-                    Lampa.Noty.show('连接更新服务器失败，请检查网络');
-                }
+                if (isManual && window.Lampa && Lampa.Noty) Lampa.Noty.show('连接更新服务器失败，请检查网络');
             };
 
             xhr.ontimeout = function () {
-                if (isManual && window.Lampa && Lampa.Noty) {
-                    Lampa.Noty.show('检查更新超时，请重试');
-                }
+                if (isManual && window.Lampa && Lampa.Noty) Lampa.Noty.show('检查更新超时，请重试');
             };
 
             xhr.send();
@@ -278,72 +328,29 @@ cordova_init_template = r"""
                 return;
             }
 
-            if (window.Lampa && Lampa.Select && Lampa.Lang) {
-                if (!window._aston_menu_lang_inited) {
-                    Lampa.Lang.add({
-                        aston_menu_title: {
-                            zh: '快捷菜单', en: 'Quick Menu', ru: 'Быстрое меню', uk: 'Швидке меню',
-                            be: 'Хуткае меню', bg: 'Бързо меню', cs: 'Rychlé menu', fr: 'Menu rapide',
-                            he: 'תפריט מהיר', pl: 'Szybkie menu', pt: 'Menu rápido', ro: 'Meniu rapid'
-                        },
-                        aston_menu_check_update: {
-                            zh: '检查更新', en: 'Check for Updates', ru: 'Проверить обновления', uk: 'Перевірити оновлення',
-                            be: 'Праверыць абнаўленні', bg: 'Проверка за актуализации', cs: 'Zkontrolovat aktualizace', fr: 'Vérifier les mises à jour',
-                            he: 'בדוק עדכונים', pl: 'Sprawdź aktualizacje', pt: 'Verificar atualizações', ro: 'Verifică actualizări'
-                        },
-                        aston_menu_check_update_descr: {
-                            zh: '在线检查是否有新版本 APK', en: 'Check for latest APK online', ru: 'Проверить наличие нового APK', uk: 'Перевірити новий APK',
-                            be: 'Праверыць новы APK анлайн', bg: 'Онлайн проверка за нов APK', cs: 'Zkontrolovat novou verzi online', fr: 'Vérifier la dernière version',
-                            he: 'בדוק גרסה חדשה ברשת', pl: 'Sprawdź nową wersję online', pt: 'Verificar nova versão online', ro: 'Verifică versiunea nouă online'
-                        },
-                        aston_menu_reload: {
-                            zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити',
-                            be: 'Перазагрузіць', bg: 'Презареждане', cs: 'Znovu načíst', fr: 'Recharger',
-                            he: 'טעינה מחדש', pl: 'Przeładuj', pt: 'Recarregar', ro: 'Reîncărcare'
-                        },
-                        aston_menu_reload_descr: {
-                            zh: '刷新当前界面与数据', en: 'Refresh interface and data', ru: 'Обновить интерфейс и данные', uk: 'Оновити інтерфейс та дані',
-                            be: 'Абнавіць інтэрфейс і дадзеныя', bg: 'Опресняване на интерфейса и данните', cs: 'Obnovit rozhraní a data', fr: "Actualiser l'interface et les données",
-                            he: 'רענון הממשק והנתונים', pl: 'Odśwież interfejs i dane', pt: 'Atualizar interface e dados', ro: 'Reîmprospătează interfața și datele'
-                        },
-                        aston_menu_exit: {
-                            zh: '退出应用', en: 'Exit', ru: 'Выход', uk: 'Вихід',
-                            be: 'Выхад', bg: 'Изход', cs: 'Ukončit', fr: 'Quitter',
-                            he: 'יציאה', pl: 'Wyjście', pt: 'Sair', ro: 'Ieșire'
-                        },
-                        aston_menu_exit_descr: {
-                            zh: '清理临时缓存并退出 Lampa', en: 'Clean cache and exit Lampa', ru: 'Очистить кэш и выйти из Lampa', uk: 'Очистити кеш та вийти з Lampa',
-                            be: 'Ачысціць кэш і выйсці з Lampa', bg: 'Изчистване на кеша и изход', cs: 'Vymazat mezipaměť a ukončit', fr: 'Vider le cache et quitter',
-                            he: 'ניקוי מטמון ויציאה מ-Lampa', pl: 'Wyczyść pamięć podręczną i wyjdź', pt: 'Limpar cache e sair', ro: 'Curăță memoria cache și ieși'
-                        },
-                        aston_update_found: { zh: '发现新版本', en: 'New Version Available', ru: 'Доступна новая версия', uk: 'Доступна нова версія', be: 'Даступная новая версія', bg: 'Налична е нова версия', cs: 'Nová verze k dispozici', fr: 'Nouvelle version disponible', he: 'גרסה חדשה זמינה', pl: 'Dostępna nowa wersja', pt: 'Nova versão disponível', ro: 'Versiune nouă disponibilă' },
-                        aston_update_now: { zh: '立即更新', en: 'Update Now', ru: 'Обновить', uk: 'Оновити', be: 'Абнавіць', bg: 'Обнови', cs: 'Aktualizovat', fr: 'Mettre à jour', he: 'עדכן עכשיו', pl: 'Aktualizuj', pt: 'Atualizar agora', ro: 'Actualizează acum' },
-                        aston_update_later: { zh: '稍后再说', en: 'Later', ru: 'Позже', uk: 'Пізніше', be: 'Пазней', bg: 'По-късно', cs: 'Později', fr: 'Plus tard', he: 'מאוחר יותר', pl: 'Później', pt: 'Mais tarde', ro: 'Mai târziu' },
-                        aston_update_latest: { zh: '已经是最新版本', en: 'Already up to date', ru: 'Уже последняя версия', uk: 'Вже остання версія', be: 'Ужо апошняя версія', bg: 'Вече е най-новата версия', cs: 'Již máte nejnovější verzi', fr: 'Déjà à jour', he: 'כבר הגרסה העדכנית ביותר', pl: 'Wersja jest aktualna', pt: 'Já está na versão mais recente', ro: 'Deja la cea mai recentă versiune' }
-                    });
-                    window._aston_menu_lang_inited = true;
-                }
+            if (window.Lampa && Lampa.Select) {
+                initAstonI18n();
 
                 Lampa.Select.show({
-                    title: Lampa.Lang.translate('aston_menu_title'),
+                    title: t('aston_menu_title', '快捷菜单'),
                     items: [
                         {
-                            title: Lampa.Lang.translate('aston_menu_check_update'),
-                            subtitle: Lampa.Lang.translate('aston_menu_check_update_descr'),
+                            title: t('aston_menu_check_update', '检查更新'),
+                            subtitle: t('aston_menu_check_update_descr', '在线检查是否有新版本 APK'),
                             onSelect: function () {
                                 checkLampaUpdate(true);
                             }
                         },
                         {
-                            title: Lampa.Lang.translate('aston_menu_reload'),
-                            subtitle: Lampa.Lang.translate('aston_menu_reload_descr'),
+                            title: t('aston_menu_reload', '重新加载'),
+                            subtitle: t('aston_menu_reload_descr', '刷新当前界面与数据'),
                             onSelect: function () {
                                 window.location.reload();
                             }
                         },
                         {
-                            title: Lampa.Lang.translate('aston_menu_exit'),
-                            subtitle: Lampa.Lang.translate('aston_menu_exit_descr'),
+                            title: t('aston_menu_exit', '退出应用'),
+                            subtitle: t('aston_menu_exit_descr', '清理临时缓存并退出 Lampa'),
                             onSelect: function () {
                                 cleanCacheAndExit();
                             }
@@ -396,14 +403,14 @@ cordova_init_template = r"""
 </script>
 """
 
-# 用精准替换注入变量，绝不用脆弱的 f-string
+# 用精准替换注入变量
 cordova_init_code = cordova_init_template.replace("__BUILD_NUMBER__", str(BUILD_NUMBER)).replace("__REPO_NAME__", REPO_NAME)
 
 if "<head>" in html_content:
     html_content = html_content.replace("<head>", "<head>\n" + cordova_init_code, 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入防盗链、更新检测、状态栏隐藏与遥控器菜单")
+    print("[Success] index.html 成功注入防盗链、全语言下载更新、状态栏隐藏与遥控器菜单")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -834,4 +841,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 23 条规则校验 100% 通过，全状态反馈更新机制就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，防盗链穿透与全功能补丁就绪！准许打包 APK。\n")
