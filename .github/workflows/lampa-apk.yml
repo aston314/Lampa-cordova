@@ -2,9 +2,9 @@ name: Auto Build Lampa APK
 
 on:
   schedule:
-    # 每天 UTC 02:00（北京时间 10:00）自动检测一次上游仓库
-    - cron: '0 2 * * *'
-  workflow_dispatch: # 支持在 GitHub 网页上手动点击按钮立即触发
+    # 每天 UTC 02:37（北京时间 10:37）避开整点高峰自动检测
+    - cron: '37 2 * * *'
+  workflow_dispatch: # 支持网页手动点击立即触发
 
 permissions:
   contents: write
@@ -202,18 +202,62 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 9. 记录最新的 Commit Hash
-      - name: Update Last Commit Record
+      # 9. 自动将最新构建信息以标准英文更新至 README.md
+      - name: Update README with Latest Build Info
+        if: steps.check_upstream.outputs.should_run == 'true'
+        env:
+          APP_VERSION: ${{ env.APP_VERSION }}
+          RUN_NUMBER: ${{ github.run_number }}
+          UPSTREAM_SHA: ${{ steps.check_upstream.outputs.latest_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 -c "
+          import os, re
+
+          version = f\"v{os.environ['APP_VERSION']} (Build {os.environ['RUN_NUMBER']})\"
+          sha = os.environ['UPSTREAM_SHA']
+          short_sha = sha[:7] if sha and sha != 'null' else 'unknown'
+          repo = os.environ['REPO']
+          apk_name = f\"lampa-v{os.environ['APP_VERSION']}-b{os.environ['RUN_NUMBER']}.apk\"
+          download_url = f\"https://github.com/{repo}/releases/download/v{os.environ['APP_VERSION']}-b{os.environ['RUN_NUMBER']}/{apk_name}\"
+          build_date = os.popen(\"TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M (UTC+8)'\").read().strip()
+
+          lines = [
+              '<!-- LATEST_BUILD_INFO_START -->',
+              '### 🚀 Latest Automated Build',
+              f'- **App Version**: \`{version}\`',
+              f'- **Build Date**: \`{build_date}\`',
+              f'- **Upstream Source**: [{short_sha}](https://github.com/yumata/lampa/commit/{sha})',
+              f'- **Direct Download**: [📦 {apk_name}]({download_url})',
+              '<!-- LATEST_BUILD_INFO_END -->'
+          ]
+          new_block = '\n'.join(lines)
+
+          if os.path.exists('README.md'):
+              with open('README.md', 'r', encoding='utf-8') as f:
+                  content = f.read()
+              pattern = r'<!-- LATEST_BUILD_INFO_START -->[\s\S]*?<!-- LATEST_BUILD_INFO_END -->'
+              if re.search(pattern, content):
+                  content = re.sub(pattern, new_block, content)
+                  with open('README.md', 'w', encoding='utf-8') as f:
+                      f.write(content)
+                  print('[Success] README.md updated successfully.')
+              else:
+                  print('[Warning] Markers not found in README.md.')
+          "
+
+      # 10. 一并提交 .last_commit 与 README.md 推回仓库
+      - name: Update Last Commit Record & README
         if: steps.check_upstream.outputs.should_run == 'true'
         run: |
           echo "${{ steps.check_upstream.outputs.latest_sha }}" > .last_commit
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .last_commit
-          git commit -m "chore: sync upstream to v${{ env.APP_VERSION }}-b${{ github.run_number }} [skip ci]" || true
+          git add .last_commit README.md
+          git commit -m "chore: sync upstream & update build info in README [skip ci]" || true
           git push
 
-      # 10. 自动清理更早的历史 Releases，永远只保留最新的 3 个版本（方向四）
+      # 11. 自动清理旧 Release，永远只保留最新的 3 个版本
       - name: Cleanup Old Releases
         if: steps.check_upstream.outputs.should_run == 'true'
         uses: dev-drprasad/delete-older-releases@v0.3.3
