@@ -68,14 +68,13 @@ if os.path.isfile(REMOTE_PLUGINS_FILE):
             loaded_data = json.load(f)
             if isinstance(loaded_data, list):
                 for p in loaded_data:
-                    # 严格校验：只有 status 为 1 且包含 url 的插件才会被激活预装，status 为 0 的作为冗余保留不载入
+                    # 严格校验：只有 status 为 1 且包含 url 的插件才会被激活预装，status 为 0 作为冗余保留
                     if isinstance(p, dict) and p.get("status") == 1 and p.get("url"):
                         default_plugins_list.append(p)
                         print(f"[Success] 读取预装远程插件: {p.get('name', '未命名')} -> {p.get('url')}")
     except Exception as e:
         print(f"[Warning] 读取 plugins/plugins.json 异常: {e}")
 else:
-    # 保底方案：如果用户尚未创建 plugins.json，默认预装 TMDB 代理
     print("[Info] 未找到 plugins/plugins.json，使用默认 TMDB 代理插件作为兜底。")
     default_plugins_list = [
         {
@@ -89,7 +88,7 @@ else:
 DEFAULT_PLUGINS_JSON_STR = json.dumps(default_plugins_list, ensure_ascii=False)
 
 
-# ================= 2. 注入 index.html (防盗链 + 预装插件库 + 顶栏更新角标 + 动态圆环进度 + 极简菜单) =================
+# ================= 2. 注入 index.html (防盗链 + 顶栏更新角标 + 原生设置对齐播放器 + 极简菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -148,7 +147,7 @@ cordova_init_template = r"""
         window.CURRENT_BUILD_CODE = __BUILD_NUMBER__;
         var REPO_PATH = "__REPO_NAME__";
 
-        // --- 预装远程插件系统（从 plugins/plugins.json 自动注入多插件） ---
+        // --- 预装远程插件系统 ---
         try {
             var defaultPlugins = __DEFAULT_PLUGINS_JSON__;
             var savedPlugins = JSON.parse(localStorage.getItem('plugins') || '[]');
@@ -169,9 +168,7 @@ cordova_init_template = r"""
             if (modified) {
                 localStorage.setItem('plugins', JSON.stringify(savedPlugins));
             }
-        } catch (e) {
-            console.log('[Init] 预装插件注入异常:', e);
-        }
+        } catch (e) {}
 
         // --- 安全清理 WebView 缓存后退出 ---
         function cleanCacheAndExit() {
@@ -313,6 +310,21 @@ cordova_init_template = r"""
                     be: 'Хуткае меню', bg: 'Бързо меню', cs: 'Rychlé menu', fr: 'Menu rapide',
                     he: 'תפריט מהיר', pl: 'Szybkie menu', pt: 'Menu rápido', ro: 'Meniu rapid'
                 },
+                aston_menu_player: {
+                    zh: '默认播放器', en: 'Default Player', ru: 'Плеер по умолчанию', uk: 'Плеєр за замовчуванням',
+                    be: 'Плэер па змаўчанні', bg: 'Плейър по подразбиране', cs: 'Výchozí přehrávač', fr: 'Lecteur par défaut',
+                    he: 'נגן ברירת מחדל', pl: 'Domyślny odtwarzacz', pt: 'Reprodutor padrão', ro: 'Player implicit'
+                },
+                aston_player_system: {
+                    zh: '系统选择 / 每次询问', en: 'System Chooser / Always ask', ru: 'Системный выбор / Спрашивать', uk: 'Системний вибір / Запитувати',
+                    be: 'Сістэмны выбар / Пытацца', bg: 'Избор от системата / Винаги питай', cs: 'Systémový výběr / Vždy se ptát', fr: 'Sélecteur système / Toujours demander',
+                    he: 'בורר המערכת / שאל תמיד', pl: 'Wybór systemowy / Zawsze pytaj', pt: 'Seletor do sistema / Sempre perguntar', ro: 'Selector de sistem / Întreabă mereu'
+                },
+                aston_player_set_done: {
+                    zh: '已设置默认播放器', en: 'Default player set to', ru: 'Плеер установлен', uk: 'Плеєр встановлено',
+                    be: 'Плэер усталяваны', bg: 'Плейърът е зададен', cs: 'Výchozí přehrávač nastaven', fr: 'Lecteur par défaut défini sur',
+                    he: 'נגן ברירת מחדל הוגדר', pl: 'Ustawiono domyślny odtwarzacz', pt: 'Reprodutor padrão definido', ro: 'Player implicit setat'
+                },
                 aston_menu_reload: {
                     zh: '重新加载', en: 'Reload', ru: 'Перезагрузить', uk: 'Перезавантажити',
                     be: 'Перазагрузіць', bg: 'Презареждане', cs: 'Znovu načíst', fr: 'Recharger',
@@ -345,6 +357,90 @@ cordova_init_template = r"""
             });
             window._aston_menu_lang_inited = true;
         }
+
+        // --- 全局挂载：由 Lampa 原生设置中的 reset_player 呼出播放器选择菜单 ---
+        window.selectDefaultPlayerMenu = function () {
+            initAstonI18n();
+            var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
+            var isZh = (curL === 'zh');
+            var currentPackage = localStorage.getItem('lampa_default_player') || '';
+
+            var players = [
+                {
+                    title: t('aston_player_system', '系统选择 / 每次询问'),
+                    package: '',
+                    desc: isZh ? '不锁定特定 App，每次弹出系统列表' : 'Always show system chooser'
+                },
+                {
+                    title: isZh ? 'DDD 视频播放器' : 'DDD Video Player',
+                    package: 'top.rootu.dddplayer',
+                    desc: isZh ? '专为大屏打造的高性能播放器' : 'Fast Android TV video player'
+                },
+                {
+                    title: 'Vimu Media Player',
+                    package: 'net.gtvbox.videoplayer',
+                    desc: isZh ? 'Android TV 顶级画质与全景声播放器' : 'High quality Android TV media player'
+                },
+                {
+                    title: isZh ? 'MX Player Pro (专业版)' : 'MX Player Pro',
+                    package: 'com.mxtech.videoplayer.pro',
+                    desc: isZh ? '经典硬件解码万能播放器' : 'Advanced hardware acceleration'
+                },
+                {
+                    title: isZh ? 'MX Player (标准版)' : 'MX Player',
+                    package: 'com.mxtech.videoplayer.ad',
+                    desc: isZh ? '通用免费版本' : 'Standard free edition'
+                },
+                {
+                    title: 'VLC for Android',
+                    package: 'org.videolan.vlc',
+                    desc: isZh ? '开源强劲播放器' : 'Open-source media player'
+                },
+                {
+                    title: 'Just Player',
+                    package: 'com.brouken.player',
+                    desc: isZh ? '轻量现代 ExoPlayer 引擎' : 'Lightweight ExoPlayer'
+                },
+                {
+                    title: 'Kodi',
+                    package: 'org.xbmc.kodi',
+                    desc: isZh ? '强大家庭影音中心' : 'Ultimate home theater'
+                }
+            ];
+
+            var items = players.map(function (item) {
+                var isCur = (item.package === currentPackage);
+                return {
+                    title: (isCur ? '✓ ' : '') + item.title,
+                    subtitle: item.desc,
+                    selected: isCur,
+                    onSelect: function () {
+                        if (item.package) {
+                            localStorage.setItem('lampa_default_player', item.package);
+                            localStorage.setItem('lampa_default_player_name', item.title);
+                        } else {
+                            localStorage.removeItem('lampa_default_player');
+                            localStorage.removeItem('lampa_default_player_name');
+                        }
+
+                        if (window.Lampa && Lampa.Noty) {
+                            Lampa.Noty.show(t('aston_player_set_done', '已设置默认播放器') + ': ' + item.title);
+                        }
+                        if (Lampa.Controller) Lampa.Controller.toggle('settings');
+                    }
+                };
+            });
+
+            if (window.Lampa && Lampa.Select) {
+                Lampa.Select.show({
+                    title: t('aston_menu_player', '默认播放器'),
+                    items: items,
+                    onBack: function () {
+                        if (Lampa.Controller) Lampa.Controller.toggle('settings');
+                    }
+                });
+            }
+        };
 
         // --- 弹出版本详情与确认升级对话框 ---
         function showUpdateDialog(info, dlUrl, showVer) {
@@ -463,7 +559,7 @@ cordova_init_template = r"""
             xhr.send();
         }
 
-        // --- 弹出遥控器设置键快捷菜单（重新加载 + 安全退出） ---
+        // --- 弹出遥控器设置键快捷菜单（极致精简：仅重新加载与安全退出） ---
         function triggerAstonQuickMenu() {
             if (window.Lampa && Lampa.Player && Lampa.Player.opened && Lampa.Player.opened()) {
                 return;
@@ -527,7 +623,6 @@ cordova_init_template = r"""
                 triggerAstonQuickMenu();
             }, false);
 
-            // 侦测顶栏就绪后触发静默检测并挂载角标
             var checkHeaderTimer = setInterval(function () {
                 if (document.querySelector('.head__actions') || document.querySelector('.head')) {
                     clearInterval(checkHeaderTimer);
@@ -543,7 +638,7 @@ cordova_init_template = r"""
 </script>
 """
 
-# 用精准替换注入变量（包含动态解析后的插件 JSON 字符串）
+# 用精准替换注入变量
 cordova_init_code = (
     cordova_init_template
     .replace("__BUILD_NUMBER__", str(BUILD_NUMBER))
@@ -612,7 +707,7 @@ if os.path.isdir(LOCAL_PLUGINS_DIR):
 LOCAL_PLUGINS_INJECT_CODE = "\n        ".join(local_plugin_pushes)
 
 
-# ================= 5. 定义大段代码模板 =================
+# ================= 5. 定义大段代码模板（包含默认播放器包名直启与安全降级） =================
 
 CORDOVA_HTTP_REQ_CODE = r"""if (!!window.cordova) {
 
@@ -779,6 +874,7 @@ OPEN_TORRENT_SERVER_CODE = r"""window.plugins.intentShim.startActivity(
         );
         //AndroidJS.openTorrentLink(SERVER.object.MagnetUri || SERVER.object.Link, JSON.stringify(intentExtra));"""
 
+# 模板 5: 外部播放器调起（包含默认播放器包名直启与自动降级）
 OPEN_PLAYER_INTENT_CODE = r"""//Android.openPlayer(data.url, data);
      //{
       var intentExtra = {
@@ -792,36 +888,58 @@ OPEN_PLAYER_INTENT_CODE = r"""//Android.openPlayer(data.url, data);
           forcedirect: true,
           forceresume: true,
         };
-        window.plugins.intentShim.startActivityForResult({
+
+        var intentConfig = {
           action : window.plugins.intentShim.ACTION_VIEW,
           url : data.url,
           position: parseInt((data.timeline ? data.timeline.time || -1 : -1) * 1000),
           type : "video/*",
           extras: intentExtra
-        }, function(itent) {
-          var time, duration, percent;
-          time = (itent.extras.position || itent.extras.extra_position) / 1000;
-          duration = (itent.extras.duration || itent.extras.extra_duration) / 1000;
-          (duration > 0) ? percent = parseInt(time * 100 / duration) : percent = 100;
-          
-          if (time && data.timeline) {
-            data.timeline.time = time;
-            data.timeline.duration = duration;
-            data.timeline.percent = percent;
+        };
 
-            if (typeof data.timeline.handler === 'function') {
-              data.timeline.handler(percent, time, duration);
-            }
+        // 读取用户在 Lampa 设置里预设的默认播放器包名（如 DDD, Vimu, MX Player 等）
+        var chosenPlayer = localStorage.getItem('lampa_default_player') || '';
+        if (chosenPlayer) {
+          intentConfig.package = chosenPlayer; // 精准锁定包名直启！
+        }
 
-            if (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.update === 'function') {
-              Lampa.Timeline.update(data.timeline);
-            } else if (typeof Timeline !== 'undefined' && typeof Timeline.update === 'function') {
-              Timeline.update(data.timeline);
+        function launchVideoIntent(config, isRetry) {
+          window.plugins.intentShim.startActivityForResult(config, function(itent) {
+            var time, duration, percent;
+            time = (itent.extras.position || itent.extras.extra_position) / 1000;
+            duration = (itent.extras.duration || itent.extras.extra_duration) / 1000;
+            (duration > 0) ? percent = parseInt(time * 100 / duration) : percent = 100;
+            
+            if (time && data.timeline) {
+              data.timeline.time = time;
+              data.timeline.duration = duration;
+              data.timeline.percent = percent;
+
+              if (typeof data.timeline.handler === 'function') {
+                data.timeline.handler(percent, time, duration);
+              }
+
+              if (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.update === 'function') {
+                Lampa.Timeline.update(data.timeline);
+              } else if (typeof Timeline !== 'undefined' && typeof Timeline.update === 'function') {
+                Timeline.update(data.timeline);
+              }
+            };
+          }, function(err) {
+            // 安全降级：万一指定的播放器被卸载了，自动移除包名回退到系统每次询问！
+            if (!isRetry && config.package) {
+              console.log("[Player] 指定播放器启动失败，自动回退到系统选择器...");
+              var fallbackConfig = Object.assign({}, config);
+              delete fallbackConfig.package;
+              launchVideoIntent(fallbackConfig, true);
+            } else {
+              console.log("Failed to open video URL via Android Intent", err);
             }
-          };
-        }, function() {
-          console.log("Failed to open video URL via Android Intent");
-        });"""
+          });
+        }
+
+        launchVideoIntent(intentConfig, false);
+        """
 
 VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         if (typeof AndroidJS !== 'undefined') {
@@ -845,9 +963,10 @@ STRICT_RULES = [
         "new": "!!window.cordova ? navigator.app.exitApp() : AndroidJS.exit()"
     },
     {
-        "name": "禁用默认播放器清除 clearDefaultPlayer",
+        # 【核心重构】：点击 Lampa 原生设置里的“重置默认播放器”，直接呼出包含 DDD / Vimu 的全语言选择菜单！
+        "name": "重构 resetDefaultPlayer 呼出多语言播放器选择菜单",
         "pattern": r"if\s*\(\s*checkVersion\(15\)\s*\)\s*AndroidJS\.clearDefaultPlayer\(\);",
-        "new": "if (checkVersion(15)) !!window.cordova ? null : AndroidJS.clearDefaultPlayer();"
+        "new": "if (window.selectDefaultPlayerMenu) window.selectDefaultPlayerMenu(); else localStorage.removeItem('lampa_default_player');"
     },
     {
         "name": "禁用频道更新 updateChannel",
@@ -880,7 +999,7 @@ STRICT_RULES = [
         "new": OPEN_TORRENT_SERVER_CODE
     },
     {
-        "name": "外部播放器 Intent 调起与进度回传",
+        "name": "外部播放器 Intent 调起与进度回传（带默认播放器包名直启）",
         "pattern": r"Android\.openPlayer\(\s*data\.url\s*,\s*data\s*\);",
         "new": OPEN_PLAYER_INTENT_CODE
     },
@@ -1004,4 +1123,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 24 条规则校验 100% 通过，多远程插件配置库就绪！准许打包 APK。\n")
+print("[Success] 所有 24 条规则校验 100% 通过，原生设置播放器对齐与 DDD 播放器就绪！准许打包 APK。\n")
