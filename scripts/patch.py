@@ -57,7 +57,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (防盗链 + 预装插件 + 缓存清理 + 在线更新 + 遥控器设置键菜单) =================
+# ================= 1. 注入 index.html (防盗链 + 预装插件 + 缓存清理 + 全响应在线更新 + 遥控器设置键菜单) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -68,7 +68,6 @@ if not os.path.exists(html_file):
 with open(html_file, "r", encoding="utf-8") as f:
     html_content = f.read()
 
-# 包含防盗链 meta、预装插件、缓存清理、原生 TV 在线更新与遥控器菜单
 cordova_init_template = r"""
 <meta name="referrer" content="no-referrer" />
 <script src="cordova.js"></script>
@@ -156,7 +155,7 @@ cordova_init_template = r"""
             xhr.onload = function () {
                 if (xhr.status === 200) {
                     if (window.Lampa && Lampa.Noty) {
-                        Lampa.Noty.show('下载完成，正在唤起安装器...');
+                        Lampa.Noty.show('下载完成，正在唤起系统安装器...');
                     }
                     var blob = xhr.response;
 
@@ -185,26 +184,36 @@ cordova_init_template = r"""
             };
 
             xhr.onerror = function () {
-                if (window.Lampa && Lampa.Noty) Lampa.Noty.show('下载出错，请检查网络');
+                if (window.Lampa && Lampa.Noty) Lampa.Noty.show('下载出错，请检查网络连接');
             };
 
             xhr.send();
         }
 
-        // --- 在线检测更新核心函数（中文镜像加速，海外直连） ---
+        // --- 在线检测更新（强化版：国内极速源 + 每一个动作都有 Noty 反馈） ---
         function checkLampaUpdate(isManual) {
-            var checkUrl = 'https://cdn.jsdelivr.net/gh/' + REPO_PATH + '@main/version.json?t=' + new Date().getTime();
+            var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
+            var isZh = (curL === 'zh');
+
+            // 中文用户走国内穿透加速源，避免 jsdelivr / raw.github 在国内被墙
+            var checkUrl = isZh 
+                ? 'https://ghfast.top/https://raw.githubusercontent.com/' + REPO_PATH + '/main/version.json?t=' + new Date().getTime()
+                : 'https://raw.githubusercontent.com/' + REPO_PATH + '/main/version.json?t=' + new Date().getTime();
+
+            // 【即点即反馈】：只要是手动点击，立刻弹出提示告诉用户已开始检测
+            if (isManual && window.Lampa && Lampa.Noty) {
+                Lampa.Noty.show('正在检查更新，请稍候...');
+            }
+
             var xhr = new XMLHttpRequest();
             xhr.open('GET', checkUrl, true);
-            xhr.timeout = 8000;
+            xhr.timeout = 10000;
 
             xhr.onload = function () {
                 if (xhr.status === 200) {
                     try {
                         var info = JSON.parse(xhr.responseText);
                         if (info.versionCode > window.CURRENT_BUILD_CODE) {
-                            var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
-                            var isZh = (curL === 'zh');
                             var dlUrl = isZh ? (info.mirror_url || info.direct_url) : (info.direct_url || info.mirror_url);
 
                             if (window.Lampa && Lampa.Select && Lampa.Lang) {
@@ -230,19 +239,35 @@ cordova_init_template = r"""
                                 });
                             }
                         } else {
+                            // 确定是最新版本时，弹窗明确告知！
                             if (isManual && window.Lampa && Lampa.Noty) {
-                                Lampa.Noty.show(Lampa.Lang ? Lampa.Lang.translate('aston_update_latest') : '已经是最新版本');
+                                Lampa.Noty.show('当前已经是最新版本 (Build ' + window.CURRENT_BUILD_CODE + ')');
                             }
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        if (isManual && window.Lampa && Lampa.Noty) {
+                            Lampa.Noty.show('解析更新版本数据异常');
+                        }
+                    }
+                } else {
+                    // 如果返回了 404 或其他异常状态码，绝不静默，明确报错
+                    if (isManual && window.Lampa && Lampa.Noty) {
+                        Lampa.Noty.show('检查失败: 服务器响应 ' + xhr.status);
+                    }
                 }
             };
 
-            if (isManual) {
-                xhr.onerror = function () {
-                    if (window.Lampa && Lampa.Noty) Lampa.Noty.show('检查更新失败，无法连接服务器');
-                };
-            }
+            xhr.onerror = function () {
+                if (isManual && window.Lampa && Lampa.Noty) {
+                    Lampa.Noty.show('连接更新服务器失败，请检查网络');
+                }
+            };
+
+            xhr.ontimeout = function () {
+                if (isManual && window.Lampa && Lampa.Noty) {
+                    Lampa.Noty.show('检查更新超时，请重试');
+                }
+            };
 
             xhr.send();
         }
@@ -362,7 +387,7 @@ cordova_init_template = r"""
                 triggerAstonQuickMenu();
             }, false);
 
-            // 开机 3 秒后静默检测一次更新
+            // 开机 3 秒后静默检测更新
             setTimeout(function () {
                 checkLampaUpdate(false);
             }, 3000);
@@ -809,4 +834,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 23 条规则校验 100% 通过，防盗链、更新机制与全功能就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，全状态反馈更新机制就绪！准许打包 APK。\n")
