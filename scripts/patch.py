@@ -57,7 +57,7 @@ def send_ntfy_alert(failed_rule_names):
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
 
-# ================= 1. 注入 index.html (防盗链 + 顶栏更新角标 + 遥控器菜单 + 缓存清理) =================
+# ================= 1. 注入 index.html (规范 hover:enter 绑定 + 原生顶栏白底高亮 + 状态栏/防盗链) =================
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 
 if not os.path.exists(html_file):
@@ -72,32 +72,30 @@ cordova_init_template = r"""
 <meta name="referrer" content="no-referrer" />
 <script src="cordova.js"></script>
 <style>
-    /* 顶栏更新高亮小图标与红点角标 */
+    /* 顶栏更新小图标容器 */
     .head__action.aston-update-action {
         position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
     }
+    /* 右上角红色小圆点角标 */
     .aston-update-dot {
         position: absolute;
-        top: 6px;
-        right: 6px;
+        top: 5px;
+        right: 5px;
         width: 8px;
         height: 8px;
         background: #ff3b30;
         border-radius: 50%;
-        box-shadow: 0 0 8px #ff3b30;
+        box-shadow: 0 0 6px #ff3b30;
         pointer-events: none;
     }
-    /* 遥控器选中顶栏图标时的金色辉光 */
+    /* 遥控器选中时：纯白底色 + 黑色图标，完全与 Lampa 顶栏风格统一 */
     .head__action.aston-update-action.focus {
-        background: rgba(255, 170, 0, 0.2) !important;
+        background: #fff !important;
+        color: #000 !important;
         border-radius: 50%;
-        transform: scale(1.15);
-    }
-    .head__action.aston-update-action.focus svg {
-        stroke: #ffaa00 !important;
     }
 </style>
 <script>
@@ -156,7 +154,7 @@ cordova_init_template = r"""
             }
         }
 
-        // --- 多语言取词函数 ---
+        // 多语言取词函数
         function t(key, fallback) {
             return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
         }
@@ -314,9 +312,8 @@ cordova_init_template = r"""
             }
         }
 
-        // --- 【核心创新】：在顶栏 Header 插入带红色角标的更新按钮 ---
+        // --- 【规范升级】：在顶栏 Header 插入采用 currentColor 的图标与 hover:enter 绑定 ---
         function renderHeaderUpdateBadge(info, dlUrl, showVer) {
-            // 防止重复添加
             if (document.getElementById('aston_header_update_btn')) return;
 
             var targetHeader = document.querySelector('.head__actions') || document.querySelector('.head');
@@ -328,30 +325,29 @@ cordova_init_template = r"""
             btn.setAttribute('tabindex', '0');
             btn.setAttribute('title', '发现新版本');
 
-            // 绿色/黄色下载图标 + 右上角微光红点角标
+            // SVG 严格采用 fill="currentColor"，继承顶栏天然颜色
             btn.innerHTML = 
-                '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffaa00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
-                '  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>' +
-                '  <polyline points="7 10 12 15 17 10"></polyline>' +
-                '  <line x1="12" y1="15" x2="12" y2="3"></line>' +
+                '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">' +
+                '  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>' +
                 '</svg>' +
                 '<span class="aston-update-dot"></span>';
 
-            // 插入到顶栏动作区最前面
             targetHeader.insertBefore(btn, targetHeader.firstChild);
 
-            // 遥控器按下确定 (hover:enter) 或鼠标点击时唤起弹窗
             var onTrigger = function (e) {
-                if (e) { e.preventDefault(); e.stopPropagation(); }
+                if (e && e.preventDefault) e.preventDefault();
+                if (e && e.stopPropagation) e.stopPropagation();
                 showUpdateDialog(info, dlUrl, showVer);
             };
 
-            btn.onclick = onTrigger;
-            btn.onkeydown = function (e) {
-                if (e.keyCode === 13) onTrigger(e); // 遥控器 OK 键
-            };
+            // 深度适配 Lampa 官方 TV 遥控器事件 hover:enter，兼顾鼠标点击
+            if (window.$) {
+                $(btn).on('hover:enter click', onTrigger);
+            } else {
+                btn.onclick = onTrigger;
+            }
 
-            console.log('[Update] 已成功在顶栏 Header 挂载更新角标');
+            console.log('[Update] 已成功在顶栏 Header 挂载符合规范的更新图标');
         }
 
         // --- 在线检测更新核心函数 ---
@@ -381,10 +377,8 @@ cordova_init_template = r"""
                             var showVer = info.versionName || info.version || ('Build ' + info.versionCode);
 
                             if (isManual) {
-                                // 手动按菜单时：直接弹窗
                                 showUpdateDialog(info, dlUrl, showVer);
                             } else {
-                                // 开机自动检测时：优雅挂载顶栏小角标，0 打扰用户！
                                 renderHeaderUpdateBadge(info, dlUrl, showVer);
                             }
                         } else {
@@ -474,6 +468,7 @@ cordova_init_template = r"""
                 });
             }
 
+            // 确保状态栏隐藏
             if (window.StatusBar) {
                 window.StatusBar.hide();
             }
@@ -482,7 +477,7 @@ cordova_init_template = r"""
                 triggerAstonQuickMenu();
             }, false);
 
-            // 智能侦测：当 Lampa 顶栏完全渲染好后，自动静默检测并挂载角标
+            // 侦测顶栏就绪后触发检测挂载图标
             var checkHeaderTimer = setInterval(function () {
                 if (document.querySelector('.head__actions') || document.querySelector('.head')) {
                     clearInterval(checkHeaderTimer);
@@ -505,7 +500,7 @@ if "<head>" in html_content:
     html_content = html_content.replace("<head>", "<head>\n" + cordova_init_code, 1)
     with open(html_file, "w", encoding="utf-8") as f:
         f.write(html_content)
-    print("[Success] index.html 成功注入顶栏角标更新、防盗链与遥控器菜单")
+    print("[Success] index.html 成功注入顶栏角标更新、规范按键绑定与防盗链")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签，打包终止！")
     send_ntfy_alert(["index.html 中未找到 <head> 标签"])
@@ -936,4 +931,4 @@ for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print("[Success] 所有 23 条规则校验 100% 通过，顶栏角标更新与全套补丁就绪！准许打包 APK。\n")
+print("[Success] 所有 23 条规则校验 100% 通过，顶栏标准样式与按键绑定就绪！准许打包 APK。\n")
