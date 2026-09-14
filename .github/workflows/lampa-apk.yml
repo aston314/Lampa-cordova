@@ -259,14 +259,64 @@ jobs:
               '<!-- LATEST_BUILD_INFO_END -->'
           ])
 
-          # --- 3. 抓取并聚合目标仓库列表（已恢复数组支持，目前仅保留 lampa-app/LAMPA） ---
+          # 9. 自动生成规范的 version.json 并更新 README.md（改用 EOF 彻底解决引号语法冲突）
+      - name: Generate version.json & Update README
+        if: steps.check_upstream.outputs.should_run == 'true'
+        env:
+          FULL_VERSION: ${{ env.FULL_VERSION }}
+          RUN_NUMBER: ${{ github.run_number }}
+          UPSTREAM_SHA: ${{ steps.check_upstream.outputs.latest_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - << 'EOF'
+          import os, re, json, urllib.request
+          from datetime import datetime, timezone, timedelta
+
+          repo = os.environ['REPO']
+          run_num = int(os.environ['RUN_NUMBER'])
+          full_ver = os.environ['FULL_VERSION']
+          version_tag = f"v{full_ver}"
+          sha = os.environ['UPSTREAM_SHA']
+          short_sha = sha[:7] if sha and sha != 'null' else 'unknown'
+          apk_name = f"lampa-v{full_ver}.apk"
+          
+          # 1. 官方直链与加速镜像
+          direct_url = f"https://github.com/{repo}/releases/download/{version_tag}/{apk_name}"
+          mirror_url = f"https://ghfast.top/{direct_url}"
+          build_date = os.popen("TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M (UTC+8)'").read().strip()
+
+          # --- 生成供电视端精准比对的规范 version.json ---
+          ver_data = {
+              'version': version_tag,
+              'versionName': full_ver,
+              'versionCode': run_num,
+              'apk_name': apk_name,
+              'direct_url': direct_url,
+              'mirror_url': mirror_url,
+              'build_date': build_date,
+              'upstream_sha': short_sha
+          }
+          with open('version.json', 'w', encoding='utf-8') as f:
+              json.dump(ver_data, f, indent=2, ensure_ascii=False)
+          print('[Success] 成功生成包含子版本的规范 version.json！')
+
+          # --- 更新 README.md 本地构建信息 ---
+          my_block = '\n'.join([
+              '<!-- LATEST_BUILD_INFO_START -->',
+              '### 🚀 Latest Automated Build',
+              f'- **App Version**: `{version_tag}`',
+              f'- **Build Date**: `{build_date}`',
+              f'- **Upstream Source**: [{short_sha}](https://github.com/yumata/lampa/commit/{sha})',
+              f'- **Direct Download**: [📦 {apk_name}]({direct_url})',
+              '<!-- LATEST_BUILD_INFO_END -->'
+          ])
+
+          # --- 抓取并追踪你指定的目标仓库列表 ---
           RELATED_REPOS = [
               'lampa-app/LAMPA',
-              'yourok/torrserver',
-              # 以后如果想增加其他仓库，直接在此追加一行即可，例如：
-              # 'bylampa/lampa-android',
+              'yourok/torrserver'
           ]
-          
           tz_cst = timezone(timedelta(hours=8))
           related_sections = [
               '<!-- RELATED_RELEASES_START -->',
@@ -276,7 +326,9 @@ jobs:
           for target in RELATED_REPOS:
               api_url = f'https://api.github.com/repos/{target}/releases/latest'
               req = urllib.request.Request(api_url)
-              req.add_header('Authorization', f'Bearer {os.environ["GH_TOKEN"]}')
+              gh_token = os.environ.get('GH_TOKEN', '')
+              if gh_token:
+                  req.add_header('Authorization', f'Bearer {gh_token}')
               req.add_header('User-Agent', 'GitHub-Actions-Script')
               req.add_header('Accept', 'application/vnd.github.v3+json')
               try:
@@ -295,7 +347,7 @@ jobs:
                       related_sections.append(f'- **Release Date**: `{date_str}`')
                       related_sections.append(f'- **Release Notes**: [View Details]({html_url})')
                       related_sections.append(f'- **Direct Download**: {download_text}')
-                      print(f'[Success] 已精准同步 {target} 最新 Release: {tag}')
+                      print(f'[Success] 已抓取 {target} 最新 Release: {tag}')
               except Exception as e:
                   print(f'[Warning] 抓取 {target} 失败: {e}')
 
@@ -312,7 +364,7 @@ jobs:
               with open('README.md', 'w', encoding='utf-8') as f:
                   f.write(content)
               print('[Success] README.md 与 version.json 准备就绪！')
-          "
+          EOF
 
       # 10. 保证将 .last_commit、README.md 与 version.json 自动推回仓库
       - name: Push Updates to Repository
