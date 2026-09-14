@@ -1,4 +1,4 @@
-```markdown
+
 # Lampa Plugins Directory Guide 🔌📦
 
 [English](#english) | [简体中文](#简体中文) | [Русский](#русский) | [Українська](#українська)
