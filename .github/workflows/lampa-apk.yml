@@ -149,7 +149,7 @@ jobs:
           cordova plugin add https://github.com/aporat/cordova-plugin-fetch.git
           cordova plugin add cordova-plugin-file@7.0.0
           cordova plugin add cordova-plugin-http@1.2.0
-          cordova plugin add cordova-plugin-splashscreen@6.0.2
+          #cordova plugin add cordova-plugin-splashscreen@6.0.2
           cordova plugin add cordova-plugin-inappbrowser@5.0.0
           cordova plugin add cordova-plugin-statusbar@3.0.0
           cordova plugin add cordova-plugin-androidx-adapter || true
