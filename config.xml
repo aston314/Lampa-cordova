@@ -75,6 +75,11 @@
             </intent-filter>
         </config-file>
 
+        <!-- 解决 Android 8.0+ 唤起应用内部更新被系统拦截的问题 -->
+        <config-file target="AndroidManifest.xml" parent="/manifest">
+            <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+        </config-file>
+
         <!-- 关联图标与横幅 -->
         <preference name="AndroidTVBanner" value="res/banner.png" />
     </platform>
