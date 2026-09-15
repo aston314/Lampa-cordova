@@ -101,7 +101,7 @@ cordova_init_template = r"""
 <style>
     /* 1. 核心关键：强制抹平开机所有底色，与 .welcome 保持绝对一致的纯黑 #000 */
     html, body {
-        background: #000 !important;
+        background: #1d1f20 !important;
         margin: 0;
         padding: 0;
         overflow: hidden;
