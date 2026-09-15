@@ -248,6 +248,7 @@ jobs:
               'direct_url': direct_url,
               'mirror_url': mirror_url,
               'size': apk_size, 
+              'sha256': apk_sha256, 
               'build_date': build_date,
               'upstream_sha': short_sha
           }
