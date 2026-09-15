@@ -247,6 +247,7 @@ jobs:
               'apk_name': apk_name,
               'direct_url': direct_url,
               'mirror_url': mirror_url,
+              'size': apk_size, 
               'build_date': build_date,
               'upstream_sha': short_sha
           }
