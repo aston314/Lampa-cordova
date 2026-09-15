@@ -131,13 +131,13 @@ cordova_init_template = r"""
             if (window.StatusBar) {
                 window.StatusBar.hide();
             }
-            if (document.readyState === 'complete') {
-                if (navigator.splashscreen) navigator.splashscreen.hide();
-            } else {
-                window.addEventListener('load', function () {
-                    if (navigator.splashscreen) navigator.splashscreen.hide();
-                });
-            }
+            # if (document.readyState === 'complete') {
+            #     if (navigator.splashscreen) navigator.splashscreen.hide();
+            # } else {
+            #     window.addEventListener('load', function () {
+            #         if (navigator.splashscreen) navigator.splashscreen.hide();
+            #     });
+            # }
         }, false);
     })();
 </script>
