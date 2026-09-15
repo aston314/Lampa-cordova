@@ -98,12 +98,6 @@ with open(html_file, "r", encoding="utf-8") as f:
 cordova_init_template = r"""
 <meta name="referrer" content="no-referrer" />
 <script src="cordova.js"></script>
-<style>
-    /* 仅做首屏加载时的纯黑打底（无 !important，绝不影响 Lampa 原版皮肤和插件） */
-    html, body {
-        background-color: #1D1F3A;
-    }
-</style>
 <script>
     (function () {
         window.CURRENT_BUILD_CODE = __BUILD_NUMBER__;
