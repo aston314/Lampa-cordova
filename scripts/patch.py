@@ -98,6 +98,20 @@ with open(html_file, "r", encoding="utf-8") as f:
 cordova_init_template = r"""
 <meta name="referrer" content="no-referrer" />
 <script src="cordova.js"></script>
+<style>
+    /* 1. 核心关键：强制抹平开机所有底色，与 .welcome 保持绝对一致的纯黑 #000 */
+    html, body {
+        background: #000 !important;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+
+    /* 2. 给欢迎层增加透明度过渡，关闭时不生硬跳切，平滑淡入主界面 */
+    .welcome {
+        transition: opacity 0.4s ease-out !important;
+    }
+</style>
 <script>
     (function () {
         window.CURRENT_BUILD_CODE = __BUILD_NUMBER__;
