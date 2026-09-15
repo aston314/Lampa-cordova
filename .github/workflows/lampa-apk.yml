@@ -239,6 +239,20 @@ jobs:
           mirror_url = f"https://ghfast.top/{direct_url}"
           build_date = os.popen("TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M (UTC+8)'").read().strip()
 
+          # ========== 核心修复：计算刚生成的 APK 的真实 SHA-256 ==========
+          apk_file_path = f"lampa_app/platforms/android/app/build/outputs/apk/release/{apk_name}"
+          apk_sha256 = ""
+          if os.path.exists(apk_file_path):
+              with open(apk_file_path, "rb") as f:
+                  hasher = hashlib.sha256()
+                  for chunk in iter(lambda: f.read(65536), b""):
+                      hasher.update(chunk)
+                  apk_sha256 = hasher.hexdigest()
+              print(f"[Success] 成功计算 APK SHA-256: {apk_sha256}")
+          else:
+              print(f"[Warning] 未找到文件 {apk_file_path}，本次不注入 sha256")
+          # =============================================================
+
           # --- 生成供电视端精准比对的规范 version.json ---
           ver_data = {
               'version': version_tag,
@@ -247,7 +261,6 @@ jobs:
               'apk_name': apk_name,
               'direct_url': direct_url,
               'mirror_url': mirror_url,
-              'size': apk_size, 
               'sha256': apk_sha256, 
               'build_date': build_date,
               'upstream_sha': short_sha
