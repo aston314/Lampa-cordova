@@ -42,6 +42,17 @@
         <preference name="ShowSplashScreenSpinner" value="false" />
         <preference name="AutoHideSplashScreen" value="false" />
          -->
+
+        <!-- 1. Cordova 核心自带底色（不需要任何插件，直接把根布局变纯黑） -->
+        <preference name="BackgroundColor" value="#000000" />
+
+        <!-- 2. 核心绝杀：把 Android 系统启动窗口背景设为纯黑（解决点击图标最初几十毫秒的白底） -->
+        <config-file target="res/values/styles.xml" parent="/resources">
+            <style name="Theme.AppCompat.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+                <item name="android:windowBackground">@android:color/black</item>
+                <item name="android:colorBackground">@android:color/black</item>
+            </style>
+        </config-file>
         
         
         <icon density="mdpi" src="res/icons/android/mipmap-mdpi/ic_launcher.png" />
