@@ -17,13 +17,135 @@
         return window.CURRENT_REPO || 'owner/repo';
     }
 
+    // ================= 0.1 混合双模 SHA-256 实现 =================
+    // 纯 ES5 标准算法（依据 FIPS 180-4 规范），用于老旧电视或 file:// 协议缺少 WebCrypto 时兜底
+    function sha256ArrayBuffer(arrayBuffer) {
+        var K = [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ];
+        var H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+
+        function rightRotate(value, amount) {
+            return (value >>> amount) | (value << (32 - amount));
+        }
+
+        var bytes = new Uint8Array(arrayBuffer);
+        var origLen = bytes.length;
+        var bitLenLow = (origLen * 8) >>> 0;
+        var bitLenHigh = Math.floor(origLen / 0x20000000);
+
+        var totalLen = Math.ceil((origLen + 9) / 64) * 64;
+        var padded = new Uint8Array(totalLen);
+        padded.set(bytes);
+        padded[origLen] = 0x80;
+
+        var end = totalLen;
+        padded[end - 1] = bitLenLow & 0xff;
+        padded[end - 2] = (bitLenLow >>> 8) & 0xff;
+        padded[end - 3] = (bitLenLow >>> 16) & 0xff;
+        padded[end - 4] = (bitLenLow >>> 24) & 0xff;
+        padded[end - 5] = bitLenHigh & 0xff;
+        padded[end - 6] = (bitLenHigh >>> 8) & 0xff;
+        padded[end - 7] = (bitLenHigh >>> 16) & 0xff;
+        padded[end - 8] = (bitLenHigh >>> 24) & 0xff;
+
+        var view = new DataView(padded.buffer);
+        var w = new Array(64);
+        var chunkStart, i;
+
+        for (chunkStart = 0; chunkStart < totalLen; chunkStart += 64) {
+            for (i = 0; i < 16; i++) {
+                w[i] = view.getUint32(chunkStart + i * 4, false);
+            }
+            for (i = 16; i < 64; i++) {
+                var s0 = rightRotate(w[i - 15], 7) ^ rightRotate(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+                var s1 = rightRotate(w[i - 2], 17) ^ rightRotate(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+                w[i] = (w[i - 16] + s0 + w[i - 7] + s1) | 0;
+            }
+
+            var a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+
+            for (i = 0; i < 64; i++) {
+                var S1 = rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25);
+                var ch = (e & f) ^ (~e & g);
+                var temp1 = (h + S1 + ch + K[i] + w[i]) | 0;
+                var S0 = rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22);
+                var maj = (a & b) ^ (a & c) ^ (b & c);
+                var temp2 = (S0 + maj) | 0;
+
+                h = g;
+                g = f;
+                f = e;
+                e = (d + temp1) | 0;
+                d = c;
+                c = b;
+                b = a;
+                a = (temp1 + temp2) | 0;
+            }
+
+            H[0] = (H[0] + a) | 0;
+            H[1] = (H[1] + b) | 0;
+            H[2] = (H[2] + c) | 0;
+            H[3] = (H[3] + d) | 0;
+            H[4] = (H[4] + e) | 0;
+            H[5] = (H[5] + f) | 0;
+            H[6] = (H[6] + g) | 0;
+            H[7] = (H[7] + h) | 0;
+        }
+
+        var hex = '';
+        for (i = 0; i < 8; i++) {
+            hex += ('00000000' + (H[i] >>> 0).toString(16)).slice(-8);
+        }
+        return hex;
+    }
+
+    // 优先尝试原生 C++ 级别硬件加速，环境不支持时自动降级到纯 ES5 算法
+    function computeBlobSha256(blob, callback) {
+        var reader = new FileReader();
+        reader.onload = function () {
+            var buffer = reader.result;
+
+            if (window.crypto && crypto.subtle && typeof crypto.subtle.digest === 'function') {
+                try {
+                    crypto.subtle.digest('SHA-256', buffer).then(function (hashBuf) {
+                        var hashArr = Array.from(new Uint8Array(hashBuf));
+                        var hex = hashArr.map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+                        callback(null, hex);
+                    }).catch(function () {
+                        callback(null, sha256ArrayBuffer(buffer));
+                    });
+                    return;
+                } catch (e) {}
+            }
+
+            try {
+                var hex = sha256ArrayBuffer(buffer);
+                callback(null, hex);
+            } catch (e) {
+                callback(e, null);
+            }
+        };
+        reader.onerror = function () {
+            callback(reader.error || new Error('FileReader error'), null);
+        };
+        reader.readAsArrayBuffer(blob);
+    }
+
     // ================= 1. 样式注入（含遥控器高亮、鼠标悬停与键盘聚焦） =================
     function injectStyles() {
         if (document.getElementById('aston-update-style')) return;
         var style = document.createElement('style');
         style.id = 'aston-update-style';
         style.type = 'text/css';
-        style.innerHTML = 
+        style.innerHTML =
             '.head__action.aston-update-action { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; }' +
             '.aston-update-dot { position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; background: #ff3b30; border-radius: 50%; box-shadow: 0 0 6px #ff3b30; pointer-events: none; }' +
             '.aston-update-ring { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: rotate(-90deg); display: none; pointer-events: none; }' +
@@ -31,7 +153,7 @@
         document.head.appendChild(style);
     }
 
-    // ================= 2. 12 国全语言字典（包含损坏校验与字符纠正） =================
+    // ================= 2. 12 国全语言字典 =================
     function initAstonI18n() {
         if (window._aston_full_lang_inited || !window.Lampa || !Lampa.Lang) return;
         Lampa.Lang.add({
@@ -48,24 +170,24 @@
             aston_update_later: { zh: '稍后再说', en: 'Later', ru: 'Позже', uk: 'Пізніше', be: 'Пазней', bg: 'По-късно', cs: 'Později', fr: 'Plus tard', he: 'מאוחר יותר', pl: 'Później', pt: 'Mais tarde', ro: 'Mai târziu' },
             aston_update_start: { zh: '开始下载更新包...', en: 'Starting update download...', ru: 'Запуск загрузки обновления...', uk: 'Початок завантаження оновлення...', be: 'Пачатак загрузкі абнаўлення...', bg: 'Стартиране на изтеглянето...', cs: 'Zahájení stahování...', fr: 'Démarrage du téléchargement...', he: 'מתחיל להוריד עדכון...', pl: 'Rozpoczynanie pobierania...', pt: 'Iniciando download...', ro: 'Se începe descărcarea...' },
             aston_update_downloading: { zh: '正在下载', en: 'Downloading', ru: 'Загрузка', uk: 'Завантаження', be: 'Загрузка', bg: 'Изтегляне', cs: 'Stahování', fr: 'Téléchargement', he: 'מוריד', pl: 'Pobieranie', pt: 'Baixando', ro: 'Descărcare' },
+            aston_update_verifying: { zh: '校验安装包完整性...', en: 'Verifying package integrity...', ru: 'Проверка целостности пакета...', uk: 'Перевірка цілісності пакета...', be: 'Праверка цэласнасці пакета...', bg: 'Проверка на целостта на пакета...', cs: 'Ověřování integrity balíčku...', fr: "Vérification de l'intégrité du paquet...", he: 'מאמת את שלמות החבילה...', pl: 'Weryfikacja integralności pakietu...', pt: 'Verificando integridade do pacote...', ro: 'Se verifică integritatea pachetului...' },
             aston_update_installing: { zh: '下载完成，正在唤起系统安装器...', en: 'Downloaded, opening installer...', ru: 'Загружено, запуск установщика...', uk: 'Завантажено, запуск інсталятора...', be: 'Загружана, запуск усталёўшчыка...', bg: 'Изтеглено, отваряне на инсталатора...', cs: 'Staženo, otevírání instalátoru...', fr: "Ouverture de l'installateur...", he: 'הורד, פותח מתקין...', pl: 'Pobrano, otwieranie instalatora...', pt: 'Baixado, abrindo instalador...', ro: 'Descărcat, deschidere instalator...' },
             aston_update_failed: { zh: '下载失败', en: 'Download failed', ru: 'Ошибка загрузки', uk: 'Помилка завантаження', be: 'Памылка загрузкі', bg: 'Грешка при изтегляне', cs: 'Stahování selhalo', fr: 'Échec du téléchargement', he: 'ההורדה נכשלה', pl: 'Pobieranie nie powiodło się', pt: 'Falha no download', ro: 'Descărcare eșuată' },
             aston_update_error: { zh: '下载出错，请检查网络连接', en: 'Download error, please check connection', ru: 'Ошибка загрузки, проверьте сеть', uk: 'Помилка завантаження, перевірте мережу', be: 'Памылка загрузкі, праверце сетку', bg: 'Грешка при изтегляне, проверете мрежата', cs: 'Chyba stahování, zkontrolujte síť', fr: 'Erreur de téléchargement, vérifiez le réseau', he: 'שגיאת הורדה, בדוק חיבור לרשת', pl: 'Błąd pobierania, sprawdź połączenie', pt: 'Erro no download, verifique a conexão', ro: 'Eroare de descărcare, verificați rețeaua' },
             aston_update_timeout: { zh: '下载超时，请重试', en: 'Download timed out, please retry', ru: 'Время загрузки истекло', uk: 'Час завантаження минув', be: 'Час загрузкі скончыўся', bg: 'Времето за изтегляне изтече', cs: 'Časový limit stahování vypršel', fr: 'Délai de téléchargement dépassé', he: 'זמן ההורדה תם', pl: 'Przekroczono limit czasu pobierania', pt: 'Tempo limite de download esgotado', ro: 'Timpul de descărcare a expirat' },
-            // 核心补充：12 国全语言安装包损坏/大小不匹配提示
             aston_update_corrupt: {
-                zh: '安装包下载不完整（文件损坏），请重试',
-                en: 'Package download incomplete (corrupted file), please retry',
-                ru: 'Пакет загружен не полностью (файл поврежден), повторите попытку',
-                uk: 'Пакет завантажено не повністю (файл пошкоджено), повторіть спробу',
-                be: 'Пакет загружаны не цалкам (файл пашкоджаны), паспрабуйце зноў',
-                bg: 'Пакетът е изтеглен непълно (повреден файл), опитайте отново',
-                cs: 'Balíček nebyl stažen kompletní (poškozený soubor), zkuste to znovu',
-                fr: 'Téléchargement du paquet incomplet (fichier corrompu), veuillez réessayer',
-                he: 'הורדת החבילה לא הושלמה (קובץ פגום), אנא נסה שוב',
-                pl: 'Pobieranie pakietu niekompletne (uszkodzony plik), spróbuj ponownie',
-                pt: 'Download do pacote incompleto (arquivo corrompido), tente novamente',
-                ro: 'Descărcare incompletă a pachetului (fișier corupt), vă rugăm să reîncercați'
+                zh: '安装包校验失败（文件损坏或不完整），请重试',
+                en: 'Package verification failed (corrupted or incomplete), please retry',
+                ru: 'Проверка пакета не пройдена (файл повреждён), повторите попытку',
+                uk: 'Перевірка пакета не пройдена (файл пошкоджено), повторіть спробу',
+                be: 'Праверка пакета не пройдзена (файл пашкоджаны), паспрабуйце зноў',
+                bg: 'Проверката на пакета е неуспешна (повреден файл), опитайте отново',
+                cs: 'Ověření balíčku selhalo (poškozený soubor), zkuste to znovu',
+                fr: "Échec de la vérification du paquet (fichier corrompu), veuillez réessayer",
+                he: 'אימות החבילה נכשל (קובץ פגום), אנא נסה שוב',
+                pl: 'Weryfikacja pakietu nie powiodła się (uszkodzony plik), spróbuj ponownie',
+                pt: 'Falha na verificação do pacote (arquivo corrompido), tente novamente',
+                ro: 'Verificarea pachetului a eșuat (fișier corupt), vă rugăm să reîncercați'
             },
             aston_update_sub: { zh: '在线极速下载并覆盖升级', en: 'Download and update online', ru: 'Онлайн загрузка и обновление', uk: 'Онлайн завантаження та оновлення', be: 'Анлайн загрузка і абнаўленне', bg: 'Онлайн изтегляне и обновяване', cs: 'Online stažení a aktualizace', fr: 'Télécharger et mettre à jour en ligne', he: 'הורד ועדכן באופן מקוון', pl: 'Pobierz i zaktualizuj online', pt: 'Baixar e atualizar online', ro: 'Descărcați și actualizați online' }
         });
@@ -76,7 +198,7 @@
         return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
     }
 
-    // ================= 3. 缓存清理与退出 =================
+    // ================= 3. 缓存清理与安全退出 =================
     function cleanCacheAndExit() {
         if (window.resolveLocalFileSystemURL && window.cordova && cordova.file && cordova.file.cacheDirectory) {
             window.resolveLocalFileSystemURL(cordova.file.cacheDirectory, function (dirEntry) {
@@ -114,7 +236,7 @@
         }
     }
 
-    // ================= 4. 播放器选择菜单 =================
+    // ================= 4. 原生设置：播放器多语言选择菜单 =================
     window.selectDefaultPlayerMenu = function () {
         initAstonI18n();
         var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
@@ -192,13 +314,33 @@
         }
     }
 
-    // ================= 6. 极速下载与安装（精准匹配文件字节大小，防残卷） =================
+    var lastMenuTrigger = 0;
+    function triggerAstonQuickMenuThrottled() {
+        var now = Date.now();
+        if (now - lastMenuTrigger < 800) return;
+        lastMenuTrigger = now;
+        triggerAstonQuickMenu();
+    }
+
+    // ================= 6. 极速下载 + SHA-256 双模校验 + 安装器唤起 =================
+    var isUpdating = false;
+
     function startUpdateDownload(downloadUrl, versionName, info) {
+        if (isUpdating) {
+            console.log('[AstonUpdate] 更新已在进行中，忽略重复请求');
+            if (window.Lampa && Lampa.Noty) {
+                Lampa.Noty.show(t('aston_update_downloading', '正在下载') + '...');
+            }
+            return;
+        }
+        isUpdating = true;
+
         var dot = document.getElementById('aston_update_dot');
         var ringSvg = document.getElementById('aston_update_ring_svg');
         var ringFill = document.getElementById('aston_ring_fill');
 
         function resetBadge() {
+            isUpdating = false;
             if (ringSvg) ringSvg.style.display = 'none';
             if (dot) dot.style.display = 'block';
         }
@@ -214,7 +356,7 @@
         var xhr = new XMLHttpRequest();
         xhr.open('GET', downloadUrl, true);
         xhr.responseType = 'blob';
-        xhr.timeout = 180000; // 下载宽限 3 分钟
+        xhr.timeout = 180000; // 宽限 3 分钟
 
         xhr.onprogress = function (e) {
             if (e.lengthComputable) {
@@ -231,89 +373,56 @@
         };
 
         xhr.onload = function () {
-            if (xhr.status === 200) {
-                var blob = xhr.response;
-
-                // 核心安全校验：100% 兼容 file:// 协议的精确字节大小匹配
-                if (info && info.size && blob.size !== info.size) {
-                    console.error('[AstonUpdate] APK 大小不匹配！期望:', info.size, '实际:', blob.size);
-                    resetBadge();
-                    if (window.Lampa && Lampa.Noty) {
-                        Lampa.Noty.show(t('aston_update_corrupt', '安装包下载不完整（文件损坏），请重试'));
-                    }
-                    return; // 坚决阻断唤起安装器！
-                }
-
-                if (ringFill) ringFill.style.strokeDashoffset = '0';
-                if (window.Lampa && Lampa.Noty) {
-                    Lampa.Noty.show(t('aston_update_installing', '下载完成，正在唤起系统安装器...'));
-                }
-
-                var targetDir = (window.cordova && cordova.file && (cordova.file.externalCacheDirectory || cordova.file.cacheDirectory)) || '';
-                if (!targetDir || !window.resolveLocalFileSystemURL) {
-                    window.open(downloadUrl, '_system');
-                    return;
-                }
-
-                window.resolveLocalFileSystemURL(targetDir, function (dirEntry) {
-                    dirEntry.getFile('update.apk', { create: false }, function (oldFile) {
-                        oldFile.remove(function () {
-                            writeNewApk(dirEntry, blob, downloadUrl);
-                        }, function () {
-                            writeNewApk(dirEntry, blob, downloadUrl);
-                        });
-                    }, function () {
-                        writeNewApk(dirEntry, blob, downloadUrl);
-                    });
-                }, function (err) {
-                    console.warn('[AstonUpdate] 目录解析失败，降级外部下载:', err);
-                    resetBadge();
-                    if (window.cordova && cordova.InAppBrowser) {
-                        cordova.InAppBrowser.open(downloadUrl, '_system');
-                    }
-                });
-            } else {
+            if (xhr.status !== 200) {
                 resetBadge();
                 if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_failed', '下载失败') + ': ' + xhr.status);
+                return;
+            }
+
+            var blob = xhr.response;
+
+            // 第一层校验：文件精确字节大小（0ms 识破网络断流）
+            if (info && info.size && blob.size !== info.size) {
+                console.error('[AstonUpdate] APK 大小不匹配！期望:', info.size, '实际:', blob.size);
+                resetBadge();
+                if (window.Lampa && Lampa.Noty) {
+                    Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
+                }
+                return;
+            }
+
+            // 第二层校验：SHA-256 密码学完整性比对
+            if (info && info.sha256) {
+                if (window.Lampa && Lampa.Noty) {
+                    Lampa.Noty.show(t('aston_update_verifying', '校验安装包完整性...'));
+                }
+
+                // 核心优化：延迟 50ms 启动计算，给 UI 留出绘制一帧的时间，杜绝界面假死
+                setTimeout(function () {
+                    computeBlobSha256(blob, function (err, hex) {
+                        if (err) {
+                            console.error('[AstonUpdate] SHA-256 计算异常:', err);
+                            resetBadge();
+                            if (window.Lampa && Lampa.Noty) {
+                                Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
+                            }
+                            return;
+                        }
+                        if (hex.toLowerCase() !== String(info.sha256).trim().toLowerCase()) {
+                            console.error('[AstonUpdate] APK SHA-256 不匹配！期望:', info.sha256, '实际:', hex);
+                            resetBadge();
+                            if (window.Lampa && Lampa.Noty) {
+                                Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
+                            }
+                            return;
+                        }
+                        proceedToInstall(blob, downloadUrl, ringFill, resetBadge);
+                    });
+                }, 50);
+            } else {
+                proceedToInstall(blob, downloadUrl, ringFill, resetBadge);
             }
         };
-
-        function writeNewApk(dirEntry, blob, fallbackUrl) {
-            dirEntry.getFile('update.apk', { create: true, overwrite: true }, function (fileEntry) {
-                fileEntry.createWriter(function (fileWriter) {
-                    fileWriter.onwriteend = function () {
-                        var installUrl = fileEntry.nativeURL || fileEntry.toURL();
-                        if (window.plugins && window.plugins.intentShim) {
-                            window.plugins.intentShim.startActivity({
-                                action: 'android.intent.action.VIEW',
-                                url: installUrl,
-                                type: 'application/vnd.android.package-archive',
-                                flags: [268435456, 1]
-                            }, function () {}, function (err) {
-                                console.warn('[AstonUpdate] Intent 调起失败，降级外部打开:', err);
-                                if (window.cordova && cordova.InAppBrowser) {
-                                    cordova.InAppBrowser.open(fallbackUrl, '_system');
-                                }
-                            });
-                        }
-                    };
-                    fileWriter.onerror = function (err) {
-                        console.warn('[AstonUpdate] 文件写入失败，降级外部打开:', err);
-                        resetBadge();
-                        if (window.cordova && cordova.InAppBrowser) {
-                            cordova.InAppBrowser.open(fallbackUrl, '_system');
-                        }
-                    };
-                    fileWriter.write(blob);
-                });
-            }, function (err) {
-                console.warn('[AstonUpdate] 创建安装包文件句柄失败:', err);
-                resetBadge();
-                if (window.cordova && cordova.InAppBrowser) {
-                    cordova.InAppBrowser.open(fallbackUrl, '_system');
-                }
-            });
-        }
 
         xhr.onerror = function (err) {
             console.warn('[AstonUpdate] 安装包下载网络错误:', err);
@@ -330,7 +439,87 @@
         xhr.send();
     }
 
-    // ================= 7. 升级提示对话框（透传 info 供大小比对） =================
+    function proceedToInstall(blob, downloadUrl, ringFill, resetBadge) {
+        if (ringFill) ringFill.style.strokeDashoffset = '0';
+        if (window.Lampa && Lampa.Noty) {
+            Lampa.Noty.show(t('aston_update_installing', '下载完成，正在唤起系统安装器...'));
+        }
+
+        var targetDir = (window.cordova && cordova.file && (cordova.file.externalCacheDirectory || cordova.file.cacheDirectory)) || '';
+        if (!targetDir || !window.resolveLocalFileSystemURL) {
+            resetBadge();
+            window.open(downloadUrl, '_system');
+            return;
+        }
+
+        window.resolveLocalFileSystemURL(targetDir, function (dirEntry) {
+            dirEntry.getFile('update.apk', { create: false }, function (oldFile) {
+                oldFile.remove(function () {
+                    writeNewApk(dirEntry, blob, downloadUrl, resetBadge);
+                }, function () {
+                    writeNewApk(dirEntry, blob, downloadUrl, resetBadge);
+                });
+            }, function () {
+                writeNewApk(dirEntry, blob, downloadUrl, resetBadge);
+            });
+        }, function (err) {
+            console.warn('[AstonUpdate] 目录解析失败，降级外部下载:', err);
+            resetBadge();
+            if (window.cordova && cordova.InAppBrowser) {
+                cordova.InAppBrowser.open(downloadUrl, '_system');
+            }
+        });
+    }
+
+    function writeNewApk(dirEntry, blob, fallbackUrl, resetBadge) {
+        dirEntry.getFile('update.apk', { create: true, overwrite: true }, function (fileEntry) {
+            fileEntry.createWriter(function (fileWriter) {
+                fileWriter.onwriteend = function () {
+                    var installUrl = fileEntry.nativeURL || fileEntry.toURL();
+                    if (window.plugins && window.plugins.intentShim) {
+                        window.plugins.intentShim.startActivity({
+                            action: 'android.intent.action.VIEW',
+                            url: installUrl,
+                            type: 'application/vnd.android.package-archive',
+                            flags: [268435456, 1]
+                        }, function () {
+                            resetBadge();
+                        }, function (err) {
+                            console.warn('[AstonUpdate] Intent 调起失败，降级外部打开:', err);
+                            resetBadge();
+                            if (window.cordova && cordova.InAppBrowser) {
+                                cordova.InAppBrowser.open(fallbackUrl, '_system');
+                            }
+                        });
+                    } else {
+                        console.warn('[AstonUpdate] 未检测到 intentShim 插件，降级外部打开安装包');
+                        resetBadge();
+                        if (window.cordova && cordova.InAppBrowser) {
+                            cordova.InAppBrowser.open(fallbackUrl, '_system');
+                        } else {
+                            window.open(fallbackUrl, '_system');
+                        }
+                    }
+                };
+                fileWriter.onerror = function (err) {
+                    console.warn('[AstonUpdate] 文件写入失败，降级外部打开:', err);
+                    resetBadge();
+                    if (window.cordova && cordova.InAppBrowser) {
+                        cordova.InAppBrowser.open(fallbackUrl, '_system');
+                    }
+                };
+                fileWriter.write(blob);
+            });
+        }, function (err) {
+            console.warn('[AstonUpdate] 创建安装包文件句柄失败:', err);
+            resetBadge();
+            if (window.cordova && cordova.InAppBrowser) {
+                cordova.InAppBrowser.open(fallbackUrl, '_system');
+            }
+        });
+    }
+
+    // ================= 7. 升级提示对话框 =================
     function showUpdateDialog(info, dlUrl, showVer) {
         initAstonI18n();
         if (window.Lampa && Lampa.Select) {
@@ -345,8 +534,8 @@
                     {
                         title: t('aston_update_now', '立即更新'),
                         subtitle: t('aston_update_sub', '在线极速下载并覆盖升级'),
-                        onSelect: function () { 
-                            startUpdateDownload(dlUrl, showVer, info); // 👈 传入 info
+                        onSelect: function () {
+                            startUpdateDownload(dlUrl, showVer, info);
                         }
                     },
                     {
@@ -374,7 +563,7 @@
         btn.setAttribute('tabindex', '0');
         btn.setAttribute('title', t('aston_update_found', '发现新版本'));
 
-        btn.innerHTML = 
+        btn.innerHTML =
             '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">' +
             '  <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>' +
             '</svg>' +
@@ -404,7 +593,6 @@
             }, 150);
         };
 
-        // 绑定遥控器焦点事件，激活白色选中圆角高亮
         if (window.$) {
             $(btn)
                 .on('hover:enter click', onTrigger)
@@ -428,7 +616,7 @@
         var repo = getRepoPath();
         var currentBuild = getBuildCode();
 
-        var checkUrl = isZh 
+        var checkUrl = isZh
             ? 'https://ghfast.top/https://raw.githubusercontent.com/' + repo + '/main/version.json?t=' + Date.now()
             : 'https://raw.githubusercontent.com/' + repo + '/main/version.json?t=' + Date.now();
 
@@ -458,29 +646,27 @@
         xhr.send();
     }
 
-    // ================= 10. 全局按键监听（防输入框打字劫持） =================
+    // ================= 10. 全局按键监听（防输入框打字劫持 + 节流） =================
     window.addEventListener('keydown', function (e) {
         var code = e.keyCode || e.which;
 
-        // 核心修复：在输入框、搜索框打字时，绝不劫持按键（保护字母 R 正常输入）
         var tag = (e.target && e.target.tagName || '').toLowerCase();
         if (tag === 'input' || tag === 'textarea' || (e.target && e.target.isContentEditable)) {
             return;
         }
 
-        // 仅在非输入场景下拦截遥控器 Menu/设置键：0(底层键), 82(Menu键), 93(上下文菜单键)
         if (code === 0 || code === 82 || code === 93) {
             e.preventDefault();
             e.stopPropagation();
-            triggerAstonQuickMenu();
+            triggerAstonQuickMenuThrottled();
         }
     }, true);
 
     document.addEventListener('menubutton', function () {
-        triggerAstonQuickMenu();
+        triggerAstonQuickMenuThrottled();
     }, false);
 
-    // ================= 11. 双重检查启动引擎（杜绝事件错过与死锁） =================
+    // ================= 11. 双重检查启动引擎 =================
     function startEngine() {
         injectStyles();
         initAstonI18n();
@@ -492,20 +678,17 @@
             setTimeout(checkUpdate, 1000);
         }
 
-        // 判定 1：若顶栏节点早已渲染完成，立即执行
         if (document.querySelector('.head__actions') || document.querySelector('.head')) {
             doCheckOnce();
             return;
         }
 
-        // 判定 2：若顶栏未出，挂载 Lampa 生命周期监听
         if (window.Lampa && Lampa.Listener) {
             Lampa.Listener.follow('app', function (e) {
                 if (e.type === 'ready') doCheckOnce();
             });
         }
 
-        // 判定 3：轮询兜底，抓到节点立即触发，30秒后自动销毁定时器
         var pollTimer = setInterval(function () {
             if (document.querySelector('.head__actions') || document.querySelector('.head')) {
                 clearInterval(pollTimer);
