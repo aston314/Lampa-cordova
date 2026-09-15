@@ -381,15 +381,15 @@
 
             var blob = xhr.response;
 
-            // 第一层校验：文件精确字节大小（0ms 识破网络断流）
-            if (info && info.size && blob.size !== info.size) {
-                console.error('[AstonUpdate] APK 大小不匹配！期望:', info.size, '实际:', blob.size);
-                resetBadge();
-                if (window.Lampa && Lampa.Noty) {
-                    Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
-                }
-                return;
-            }
+            // // 第一层校验：文件精确字节大小（0ms 识破网络断流）
+            // if (info && info.size && blob.size !== info.size) {
+            //     console.error('[AstonUpdate] APK 大小不匹配！期望:', info.size, '实际:', blob.size);
+            //     resetBadge();
+            //     if (window.Lampa && Lampa.Noty) {
+            //         Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
+            //     }
+            //     return;
+            // }
 
             // 第二层校验：SHA-256 密码学完整性比对
             if (info && info.sha256) {
