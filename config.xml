@@ -44,7 +44,8 @@
          -->
 
         <!-- 1. Cordova 核心自带底色（不需要任何插件，直接把根布局变纯黑） -->
-        <preference name="BackgroundColor" value="#000000" />
+        <!-- 锁定安卓系统创建窗口瞬间为纯黑 #000，与 .welcome 的纯黑完全一致 -->
+        <preference name="BackgroundColor" value="0xFF000000" />
         
         
         <icon density="mdpi" src="res/icons/android/mipmap-mdpi/ic_launcher.png" />
