@@ -68,22 +68,18 @@ if os.path.isfile(REMOTE_PLUGINS_FILE):
             loaded_data = json.load(f)
             if isinstance(loaded_data, list):
                 for p in loaded_data:
-                    # 严格校验：只有 status 为 1 且包含 url 的插件才会被激活预装，status 为 0 作为冗余保留
+                    # 严格校验：只有 status 为 1 且包含有效 url 的插件才会被激活预装
                     if isinstance(p, dict) and p.get("status") == 1 and p.get("url"):
                         default_plugins_list.append(p)
                         print(f"[Success] 读取预装远程插件: {p.get('name', '未命名')} -> {p.get('url')}")
     except Exception as e:
         print(f"[Warning] 读取 plugins/plugins.json 异常: {e}")
 else:
-    print("[Info] 未找到 plugins/plugins.json，使用默认 TMDB 代理插件作为兜底。")
-    default_plugins_list = [
-        {
-            "name": "TMDB Proxy",
-            "url": "http://cub.red/plugin/tmdb-proxy",
-            "author": "CUB",
-            "status": 1
-        }
-    ]
+    print("[Info] 未找到 plugins/plugins.json，跳过远程插件预装。")
+
+# 如果没有找到文件，或文件中没有任何 status==1 的有效项，保持为空列表
+if not default_plugins_list:
+    print("[Info] 当前无任何有效远程预装插件，将打包纯净版（不预装任何插件）。")
 
 DEFAULT_PLUGINS_JSON_STR = json.dumps(default_plugins_list, ensure_ascii=False)
 
