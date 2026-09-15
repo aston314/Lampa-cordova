@@ -223,7 +223,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python3 - << 'EOF'
-          import os, re, json, urllib.request
+          import os, re, json, urllib.request, hashlib
           from datetime import datetime, timezone, timedelta
 
           repo = os.environ['REPO']
