@@ -1,14 +1,12 @@
 (function () {
     'use strict';
 
-    // ================= 0. 单例保护：杜绝热重载/二次载入导致的事件重复挂载 =================
+    // ================= 0. 单例保护 =================
     if (window._aston_update_inited) {
-        console.log('[AstonUpdate] 插件已在运行中，跳过重复初始化');
         return;
     }
     window._aston_update_inited = true;
 
-    // 动态获取常量，杜绝顶部闭包过早固化为 1
     function getBuildCode() {
         return window.CURRENT_BUILD_CODE || 1;
     }
@@ -17,8 +15,7 @@
         return window.CURRENT_REPO || 'owner/repo';
     }
 
-    // ================= 0.1 混合双模 SHA-256 实现 =================
-    // 纯 ES5 标准算法（依据 FIPS 180-4 规范），用于老旧电视或 file:// 协议缺少 WebCrypto 时兜底
+    // ================= 0.1 纯 ES5 SHA-256 算法 =================
     function sha256ArrayBuffer(arrayBuffer) {
         var K = [
             0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -107,12 +104,10 @@
         return hex;
     }
 
-    // 优先尝试原生 C++ 级别硬件加速，环境不支持时自动降级到纯 ES5 算法
     function computeBlobSha256(blob, callback) {
         var reader = new FileReader();
         reader.onload = function () {
             var buffer = reader.result;
-
             if (window.crypto && crypto.subtle && typeof crypto.subtle.digest === 'function') {
                 try {
                     crypto.subtle.digest('SHA-256', buffer).then(function (hashBuf) {
@@ -125,10 +120,8 @@
                     return;
                 } catch (e) {}
             }
-
             try {
-                var hex = sha256ArrayBuffer(buffer);
-                callback(null, hex);
+                callback(null, sha256ArrayBuffer(buffer));
             } catch (e) {
                 callback(e, null);
             }
@@ -139,7 +132,7 @@
         reader.readAsArrayBuffer(blob);
     }
 
-    // ================= 1. 样式注入（含遥控器高亮、鼠标悬停与键盘聚焦） =================
+    // ================= 1. 样式注入 =================
     function injectStyles() {
         if (document.getElementById('aston-update-style')) return;
         var style = document.createElement('style');
@@ -198,7 +191,7 @@
         return (window.Lampa && Lampa.Lang && Lampa.Lang.translate(key)) || fallback;
     }
 
-    // ================= 3. 缓存清理与安全退出 =================
+    // ================= 3. 缓存清理与退出 =================
     function cleanCacheAndExit() {
         if (window.resolveLocalFileSystemURL && window.cordova && cordova.file && cordova.file.cacheDirectory) {
             window.resolveLocalFileSystemURL(cordova.file.cacheDirectory, function (dirEntry) {
@@ -223,12 +216,10 @@
                             entry.remove(onFinish, onFinish);
                         }
                     });
-                }, function (err) {
-                    console.warn('[AstonUpdate] 遍历缓存失败:', err);
+                }, function () {
                     if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
                 });
-            }, function (err) {
-                console.warn('[AstonUpdate] 解析缓存目录失败:', err);
+            }, function () {
                 if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
             });
         } else {
@@ -236,7 +227,7 @@
         }
     }
 
-    // ================= 4. 原生设置：播放器多语言选择菜单 =================
+    // ================= 4. 播放器选择菜单 =================
     window.selectDefaultPlayerMenu = function () {
         initAstonI18n();
         var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
@@ -267,9 +258,6 @@
                     } else {
                         localStorage.removeItem('lampa_default_player');
                         localStorage.removeItem('lampa_default_player_name');
-                    }
-                    if (window.Lampa && Lampa.Noty) {
-                        Lampa.Noty.show(t('aston_player_set_done', '已设置默认播放器') + ': ' + item.title);
                     }
                     if (Lampa.Controller) Lampa.Controller.toggle('settings');
                 }
@@ -322,49 +310,61 @@
         triggerAstonQuickMenu();
     }
 
-    // ================= 6. 极速下载 + SHA-256 双模校验 + 安装器唤起 =================
+    // ================= 6. 极速下载 + 纯 Lampa.Loading 交互（彻底剔除 Noty） =================
     var isUpdating = false;
 
     function startUpdateDownload(downloadUrl, versionName, info) {
-        if (isUpdating) {
-            console.log('[AstonUpdate] 更新已在进行中，忽略重复请求');
-            if (window.Lampa && Lampa.Noty) {
-                Lampa.Noty.show(t('aston_update_downloading', '正在下载') + '...');
-            }
-            return;
-        }
+        if (isUpdating) return;
         isUpdating = true;
 
         var dot = document.getElementById('aston_update_dot');
         var ringSvg = document.getElementById('aston_update_ring_svg');
         var ringFill = document.getElementById('aston_ring_fill');
 
-        function resetBadge() {
+        // 彻底关掉 Loading 遮罩并复位
+        function stopAndReset() {
             isUpdating = false;
+            if (window.Lampa && Lampa.Loading) {
+                Lampa.Loading.stop();
+            }
             if (ringSvg) ringSvg.style.display = 'none';
             if (dot) dot.style.display = 'block';
+        }
+
+        // 错误处理：在 Loading 界面中央展示错误文字 2.5 秒，让用户看清，随后关闭复位，0 个 Noty！
+        function showErrorAndStop(errorMsg) {
+            if (window.Lampa && Lampa.Loading) {
+                Lampa.Loading.setText(errorMsg);
+                setTimeout(stopAndReset, 2500);
+            } else {
+                stopAndReset();
+            }
         }
 
         if (dot) dot.style.display = 'none';
         if (ringSvg) ringSvg.style.display = 'block';
         if (ringFill) ringFill.style.strokeDashoffset = '94.25';
 
-        if (window.Lampa && Lampa.Noty) {
-            Lampa.Noty.show(t('aston_update_start', '开始下载更新包...'));
+        // 启动 Loading 阻塞遮罩（首参传 false，按遥控器按键彻底静默不取消）
+        if (window.Lampa && Lampa.Loading) {
+            Lampa.Loading.start(false, t('aston_update_start', '开始下载更新包...'));
         }
 
         var xhr = new XMLHttpRequest();
         xhr.open('GET', downloadUrl, true);
         xhr.responseType = 'blob';
-        xhr.timeout = 180000; // 宽限 3 分钟
+        xhr.timeout = 180000; // 3 分钟超时
 
+        // 原位刷新下载进度
         xhr.onprogress = function (e) {
             if (e.lengthComputable) {
                 var pct = Math.round((e.loaded / e.total) * 100);
                 var loadedMB = (e.loaded / (1024 * 1024)).toFixed(1);
                 var totalMB = (e.total / (1024 * 1024)).toFixed(1);
-                if (window.Lampa && Lampa.Noty) {
-                    Lampa.Noty.show(t('aston_update_downloading', '正在下载') + ' ' + versionName + ': ' + pct + '% (' + loadedMB + '/' + totalMB + ' MB)');
+                var progressText = t('aston_update_downloading', '正在下载') + ' ' + versionName + ': ' + pct + '% (' + loadedMB + '/' + totalMB + ' MB)';
+
+                if (window.Lampa && Lampa.Loading) {
+                    Lampa.Loading.setText(progressText);
                 }
                 if (ringFill) {
                     ringFill.style.strokeDashoffset = (94.25 * (1 - (pct / 100))).toFixed(2);
@@ -374,80 +374,53 @@
 
         xhr.onload = function () {
             if (xhr.status !== 200) {
-                resetBadge();
-                if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_failed', '下载失败') + ': ' + xhr.status);
+                showErrorAndStop(t('aston_update_failed', '下载失败') + ': ' + xhr.status);
                 return;
             }
 
             var blob = xhr.response;
 
-            // // 第一层校验：文件精确字节大小（0ms 识破网络断流）
-            // if (info && info.size && blob.size !== info.size) {
-            //     console.error('[AstonUpdate] APK 大小不匹配！期望:', info.size, '实际:', blob.size);
-            //     resetBadge();
-            //     if (window.Lampa && Lampa.Noty) {
-            //         Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
-            //     }
-            //     return;
-            // }
-
-            // 第二层校验：SHA-256 密码学完整性比对
+            // 仅进行 SHA-256 哈希校验
             if (info && info.sha256) {
-                if (window.Lampa && Lampa.Noty) {
-                    Lampa.Noty.show(t('aston_update_verifying', '校验安装包完整性...'));
+                if (window.Lampa && Lampa.Loading) {
+                    Lampa.Loading.setText(t('aston_update_verifying', '校验安装包完整性...'));
                 }
 
-                // 核心优化：延迟 50ms 启动计算，给 UI 留出绘制一帧的时间，杜绝界面假死
                 setTimeout(function () {
                     computeBlobSha256(blob, function (err, hex) {
-                        if (err) {
-                            console.error('[AstonUpdate] SHA-256 计算异常:', err);
-                            resetBadge();
-                            if (window.Lampa && Lampa.Noty) {
-                                Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
-                            }
+                        if (err || (hex.toLowerCase() !== String(info.sha256).trim().toLowerCase())) {
+                            showErrorAndStop(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
                             return;
                         }
-                        if (hex.toLowerCase() !== String(info.sha256).trim().toLowerCase()) {
-                            console.error('[AstonUpdate] APK SHA-256 不匹配！期望:', info.sha256, '实际:', hex);
-                            resetBadge();
-                            if (window.Lampa && Lampa.Noty) {
-                                Lampa.Noty.show(t('aston_update_corrupt', '安装包校验失败（文件损坏或不完整），请重试'));
-                            }
-                            return;
-                        }
-                        proceedToInstall(blob, downloadUrl, ringFill, resetBadge);
+                        proceedToInstall(blob, downloadUrl, ringFill, stopAndReset, showErrorAndStop);
                     });
                 }, 50);
             } else {
-                proceedToInstall(blob, downloadUrl, ringFill, resetBadge);
+                proceedToInstall(blob, downloadUrl, ringFill, stopAndReset, showErrorAndStop);
             }
         };
 
-        xhr.onerror = function (err) {
-            console.warn('[AstonUpdate] 安装包下载网络错误:', err);
-            resetBadge();
-            if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_error', '下载出错，请检查网络连接'));
+        xhr.onerror = function () {
+            showErrorAndStop(t('aston_update_error', '下载出错，请检查网络连接'));
         };
 
         xhr.ontimeout = function () {
-            console.warn('[AstonUpdate] 安装包下载连接超时');
-            resetBadge();
-            if (window.Lampa && Lampa.Noty) Lampa.Noty.show(t('aston_update_timeout', '下载超时，请重试'));
+            showErrorAndStop(t('aston_update_timeout', '下载超时，请重试'));
         };
 
         xhr.send();
     }
 
-    function proceedToInstall(blob, downloadUrl, ringFill, resetBadge) {
+    function proceedToInstall(blob, downloadUrl, ringFill, stopAndReset, showErrorAndStop) {
         if (ringFill) ringFill.style.strokeDashoffset = '0';
-        if (window.Lampa && Lampa.Noty) {
-            Lampa.Noty.show(t('aston_update_installing', '下载完成，正在唤起系统安装器...'));
+
+        if (window.Lampa && Lampa.Loading) {
+            Lampa.Loading.setText(t('aston_update_installing', '下载完成，正在唤起系统安装器...'));
         }
 
         var targetDir = (window.cordova && cordova.file && (cordova.file.externalCacheDirectory || cordova.file.cacheDirectory)) || '';
         if (!targetDir || !window.resolveLocalFileSystemURL) {
-            resetBadge();
+            stopAndReset();
             window.open(downloadUrl, '_system');
             return;
         }
@@ -455,27 +428,32 @@
         window.resolveLocalFileSystemURL(targetDir, function (dirEntry) {
             dirEntry.getFile('update.apk', { create: false }, function (oldFile) {
                 oldFile.remove(function () {
-                    writeNewApk(dirEntry, blob, downloadUrl, resetBadge);
+                    writeNewApk(dirEntry, blob, downloadUrl, stopAndReset);
                 }, function () {
-                    writeNewApk(dirEntry, blob, downloadUrl, resetBadge);
+                    writeNewApk(dirEntry, blob, downloadUrl, stopAndReset);
                 });
             }, function () {
-                writeNewApk(dirEntry, blob, downloadUrl, resetBadge);
+                writeNewApk(dirEntry, blob, downloadUrl, stopAndReset);
             });
-        }, function (err) {
-            console.warn('[AstonUpdate] 目录解析失败，降级外部下载:', err);
-            resetBadge();
+        }, function () {
+            stopAndReset();
             if (window.cordova && cordova.InAppBrowser) {
                 cordova.InAppBrowser.open(downloadUrl, '_system');
             }
         });
     }
 
-    function writeNewApk(dirEntry, blob, fallbackUrl, resetBadge) {
+    function writeNewApk(dirEntry, blob, fallbackUrl, stopAndReset) {
         dirEntry.getFile('update.apk', { create: true, overwrite: true }, function (fileEntry) {
             fileEntry.createWriter(function (fileWriter) {
                 fileWriter.onwriteend = function () {
                     var installUrl = fileEntry.nativeURL || fileEntry.toURL();
+
+                    // 写入完成，在调起安装器的瞬间关掉 Loading 遮罩
+                    if (window.Lampa && Lampa.Loading) {
+                        Lampa.Loading.stop();
+                    }
+
                     if (window.plugins && window.plugins.intentShim) {
                         window.plugins.intentShim.startActivity({
                             action: 'android.intent.action.VIEW',
@@ -483,17 +461,15 @@
                             type: 'application/vnd.android.package-archive',
                             flags: [268435456, 1]
                         }, function () {
-                            resetBadge();
-                        }, function (err) {
-                            console.warn('[AstonUpdate] Intent 调起失败，降级外部打开:', err);
-                            resetBadge();
+                            stopAndReset();
+                        }, function () {
+                            stopAndReset();
                             if (window.cordova && cordova.InAppBrowser) {
                                 cordova.InAppBrowser.open(fallbackUrl, '_system');
                             }
                         });
                     } else {
-                        console.warn('[AstonUpdate] 未检测到 intentShim 插件，降级外部打开安装包');
-                        resetBadge();
+                        stopAndReset();
                         if (window.cordova && cordova.InAppBrowser) {
                             cordova.InAppBrowser.open(fallbackUrl, '_system');
                         } else {
@@ -501,18 +477,16 @@
                         }
                     }
                 };
-                fileWriter.onerror = function (err) {
-                    console.warn('[AstonUpdate] 文件写入失败，降级外部打开:', err);
-                    resetBadge();
+                fileWriter.onerror = function () {
+                    stopAndReset();
                     if (window.cordova && cordova.InAppBrowser) {
                         cordova.InAppBrowser.open(fallbackUrl, '_system');
                     }
                 };
                 fileWriter.write(blob);
             });
-        }, function (err) {
-            console.warn('[AstonUpdate] 创建安装包文件句柄失败:', err);
-            resetBadge();
+        }, function () {
+            stopAndReset();
             if (window.cordova && cordova.InAppBrowser) {
                 cordova.InAppBrowser.open(fallbackUrl, '_system');
             }
@@ -549,7 +523,7 @@
         }
     }
 
-    // ================= 8. 顶栏角标渲染（绑定遥控器 focus 事件） =================
+    // ================= 8. 顶栏角标渲染 =================
     function renderHeaderUpdateBadge(info, dlUrl, showVer) {
         if (document.getElementById('aston_header_update_btn')) return;
 
@@ -632,21 +606,13 @@
                         var showVer = info.versionName || info.version || ('Build ' + info.versionCode);
                         renderHeaderUpdateBadge(info, dlUrl, showVer);
                     }
-                } catch (e) {
-                    console.warn('[AstonUpdate] 解析 version.json 异常:', e);
-                }
+                } catch (e) {}
             }
-        };
-        xhr.onerror = function (err) {
-            console.warn('[AstonUpdate] 检测更新网络错误:', err);
-        };
-        xhr.ontimeout = function () {
-            console.warn('[AstonUpdate] 检测更新连接超时 (10s)');
         };
         xhr.send();
     }
 
-    // ================= 10. 全局按键监听（防输入框打字劫持 + 节流） =================
+    // ================= 10. 全局按键监听 =================
     window.addEventListener('keydown', function (e) {
         var code = e.keyCode || e.which;
 
