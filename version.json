@@ -1,11 +1,11 @@
 {
-  "version": "v3.3.3.87",
-  "versionName": "3.3.3.87",
-  "versionCode": 87,
-  "apk_name": "lampa-v3.3.3.87.apk",
-  "direct_url": "https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.87/lampa-v3.3.3.87.apk",
-  "mirror_url": "https://ghfast.top/https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.87/lampa-v3.3.3.87.apk",
-  "sha256": "527cd859e5d8952bdc2dbc0c750b99229992756ac4bfa29a870516c5b543f9f3",
-  "build_date": "2026-09-15 15:42 (UTC+8)",
+  "version": "v3.3.3.88",
+  "versionName": "3.3.3.88",
+  "versionCode": 88,
+  "apk_name": "lampa-v3.3.3.88.apk",
+  "direct_url": "https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.88/lampa-v3.3.3.88.apk",
+  "mirror_url": "https://ghfast.top/https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.88/lampa-v3.3.3.88.apk",
+  "sha256": "e52f2e02078d4f90132496643354d1ac1521537cdd6ff2ec73fc5f45edb78b3b",
+  "build_date": "2026-09-15 15:54 (UTC+8)",
   "upstream_sha": "0f50f0c"
 }
