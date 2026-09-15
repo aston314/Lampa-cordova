@@ -461,15 +461,14 @@ VERSION_CODE_FALLBACK_CODE = r"""var versionCode;
         };"""
 
 VOICE_START_INTENT_CODE = r"""if (!!window.cordova && window.plugins && window.plugins.intentShim) {
-          var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'ru';
+          var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'en';
           
-          // 动态提示语：如果留空，Android 系统会自动使用当前系统语言（俄语、英语、中文等）的原生提示语
           var voiceExtras = {
               "android.speech.extra.LANGUAGE_MODEL": "free_form",
               "android.speech.extra.MAX_RESULTS": 1
           };
 
-          // 如果当前是中文环境，可补充中文提示，其他语言不传，让系统自适应原生提示
+          // 中文环境下设置定制提示，其他语言不传让系统自适应原生提示
           if (curL === 'zh') {
               voiceExtras["android.speech.extra.PROMPT"] = "请说出影片名称...";
           }
@@ -489,7 +488,8 @@ VOICE_START_INTENT_CODE = r"""if (!!window.cordova && window.plugins && window.p
           }, function (err) {
               console.warn('[Voice] 语音识别取消或未安装语音服务:', err);
               if (window.Lampa && Lampa.Noty) {
-                  var failMsg = curL === 'zh' ? '未检测到系统语音服务' : (curL === 'ru' ? 'Голосовой поиск недоступен' : 'Voice service not available');
+                  // 中文显示特定文案，其他所有语言统一走英文兜底
+                  var failMsg = (curL === 'zh') ? '未检测到可用语音服务' : 'Voice service not available';
                   Lampa.Noty.show(failMsg);
               }
           });
