@@ -635,6 +635,11 @@ STRICT_RULES = [
         "name": "修复语音启动 voiceStart (通过 intentShim 调起系统语音识别)",
         "pattern": r"if\s*\(\s*checkVersion\(25\)\s*\)\s*AndroidJS\.voiceStart\(\);",
         "new": VOICE_START_INTENT_CODE
+    },
+    {
+        "name": "设备名称标识修改 Lampa -> Lampa Cordova",
+        "pattern": r"select\(\s*['\"]device_name['\"]\s*,\s*['\"]['\"]\s*,\s*['\"]Lampa['\"]\s*\);",
+        "new": "select('device_name', '', 'Lampa Cordova');"
     }
 ]
 
