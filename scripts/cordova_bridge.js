@@ -172,6 +172,12 @@
     window.AndroidJS = {
         appVersion: function () { return '3.3.3-24'; },
         exit: function () { window.Android.exit(); },
+
+        // 👈 核心修复：直接复用 Android.httpReq 网络请求引擎！
+        httpReq: function (params, callbacks) {
+            window.Android.httpReq(params, callbacks);
+        },
+
         clearDefaultPlayer: function () {
             if (window.selectDefaultPlayerMenu) window.selectDefaultPlayerMenu();
             else localStorage.removeItem('lampa_default_player');
