@@ -252,7 +252,7 @@
          * 伪造 Lampa Android 原生客户端版本号，满足平台检查
          */
         appVersion: function () {
-            return '3.3.3-28';
+            return '3.3.3';
         },
 
         /**
