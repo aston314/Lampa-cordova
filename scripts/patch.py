@@ -230,6 +230,11 @@ STRICT_RULES = [
     #     "new": "return './vender/' + lib;"
     # },
     {
+        "name": "强制本地加载核心解码库 vender",
+        "pattern": r"return\s+window\.location\.protocol\s*==\s*['\"]file:['\"][^;]*?vender\/[^;]*?;",
+        "new": "return './vender/' + lib;"
+    }
+    {
         "name": "动态本地插件自动加载注册",
         "pattern": r"puts\.push\(['\"]\./plugins/modification\.js['\"]\);",
         "new": LOCAL_PLUGINS_INJECT_CODE
