@@ -224,11 +224,11 @@ STRICT_RULES = [
         "pattern": r"if\s*\(\s*\['ru',\s*'en'\]\.indexOf\(code\)\s*>=\s*0\s*\)\s*loadTask\(\);",
         "new": ALL_LANG_EMBEDDED_CODE
     },
-    {
-        "name": "强制本地加载核心解码库 vender",
-        "pattern": r"return\s+window\.location\.protocol\s*==\s*['\"]file:['\"]\s*\|\|\s*window\.location\.href\.indexOf\(['\"]chrome-extension['\"]\)\s*>\s*-1\s*\?\s*object\$2\.github_lampa\s*\+\s*['\"]vender/['\"]\s*\+\s*lib\s*:\s*['\"]\./vender/['\"]\s*\+\s*lib;",
-        "new": "return './vender/' + lib;"
-    },
+    # {
+    #     "name": "强制本地加载核心解码库 vender",
+    #     "pattern": r"return\s+window\.location\.protocol\s*==\s*['\"]file:['\"]\s*\|\|\s*window\.location\.href\.indexOf\(['\"]chrome-extension['\"]\)\s*>\s*-1\s*\?\s*object\$2\.github_lampa\s*\+\s*['\"]vender/['\"]\s*\+\s*lib\s*:\s*['\"]\./vender/['\"]\s*\+\s*lib;",
+    #     "new": "return './vender/' + lib;"
+    # },
     {
         "name": "动态本地插件自动加载注册",
         "pattern": r"puts\.push\(['\"]\./plugins/modification\.js['\"]\);",
