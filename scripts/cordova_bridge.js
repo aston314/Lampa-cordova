@@ -1,116 +1,13 @@
 /**
- * Lampa Cordova Bridge (无侵入原生适配器)
- * 自动拦截并实现 window.Android 与 window.AndroidJS 接口
+ * Lampa Cordova Bridge (原生适配层)
+ * 负责：外部播放器 Intent、版本伪装、默认配置与系统全屏
  */
 (function () {
     'use strict';
 
-    if (!window._cordova_certs_accepted && window.cordovaHTTP) {
-        cordovaHTTP.acceptAllCerts(true, function () {}, function () {});
-        window._cordova_certs_accepted = true;
-    }
-
     window.Android = {
         exit: function () {
             if (navigator.app && navigator.app.exitApp) navigator.app.exitApp();
-        },
-
-        httpReq: function (params, callbacks) {
-            var secuses = callbacks.complite || function () {};
-            var error = callbacks.error || function () {};
-
-            if (!window._cordova_certs_accepted && window.cordovaHTTP) {
-                cordovaHTTP.acceptAllCerts(true, function () {}, function () {});
-                window._cordova_certs_accepted = true;
-            }
-
-            var url = params.url;
-            var data = params.post_data;
-            var headers = params.headers || {};
-            var dataType = params.dataType || 'json';
-            var contentType = params.contentType || '';
-            var isJsonString = false;
-            var requestContent = "";
-
-            if (data) {
-                if (typeof data === "string") {
-                    requestContent = data;
-                    try {
-                        JSON.parse(requestContent);
-                        isJsonString = true;
-                        contentType = contentType || "application/json";
-                    } catch (e) {
-                        contentType = contentType || "application/x-www-form-urlencoded";
-                    }
-                } else if (typeof data === "object") {
-                    contentType = "application/json";
-                    requestContent = JSON.stringify(data);
-                    isJsonString = true;
-                }
-            }
-
-            if (requestContent !== "") {
-                var hasContentType = false;
-                for (var k in headers) {
-                    if (k.toLowerCase() === 'content-type') {
-                        hasContentType = true;
-                        break;
-                    }
-                }
-                if (!hasContentType) headers["Content-Type"] = contentType;
-            }
-
-            function executeFetch(targetUrl, method, bodyContent) {
-                var fetchOptions = { method: method, headers: headers };
-                if (bodyContent) fetchOptions.body = bodyContent;
-                if (window.cordovaFetch && cordovaFetch.setTimeout) cordovaFetch.setTimeout = 60;
-
-                cordovaFetch(targetUrl, fetchOptions)
-                    .then(function (response) {
-                        if (response.status >= 200 && response.status < 400) {
-                            return dataType === 'json' ? response.json() : response.text();
-                        } else {
-                            throw { status: response.status, error: response.statusText };
-                        }
-                    })
-                    .then(function (parsedData) { secuses(parsedData); })
-                    .catch(function (err) { error({ status: (err && err.status) || 404 }, (err && err.error) || ''); });
-            }
-
-            if (!requestContent) {
-                var isHttp = url && typeof url === 'string' && (url.indexOf('http://') === 0 || url.indexOf('https://') === 0);
-                var isSpecialDdys = url && url.indexOf('ddys') !== -1;
-
-                if (isSpecialDdys || !isHttp) {
-                    executeFetch(url, 'GET', null);
-                } else {
-                    cordovaHTTP.get(url, {}, headers, function (response) {
-                        if (dataType === 'json') {
-                            try { secuses(JSON.parse(response.data)); } catch (e) { error({ status: response.status }, response.error); }
-                        } else {
-                            secuses(response.data);
-                        }
-                    }, function (response) { error({ status: response.status }, response.error); });
-                }
-            } else {
-                if (!isJsonString) {
-                    var formObj = {};
-                    requestContent.split('&').forEach(function (pair) {
-                        var parts = pair.split('=');
-                        if (parts[0]) formObj[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1] || '');
-                    });
-
-                    cordovaHTTP.post(url, formObj, headers, function (response) {
-                        if (dataType === 'json') {
-                            try { secuses(JSON.parse(response.data)); } catch (e) { error({ status: response.status }, response.error); }
-                        } else {
-                            secuses(response.data);
-                        }
-                    }, function (response) { error({ status: response.status }, response.error); });
-                } else {
-                    executeFetch(url, 'POST', requestContent);
-                }
-            }
         },
 
         openPlayer: function (url, data) {
@@ -172,12 +69,6 @@
     window.AndroidJS = {
         appVersion: function () { return '3.3.3-24'; },
         exit: function () { window.Android.exit(); },
-
-        // 👈 核心修复：直接复用 Android.httpReq 网络请求引擎！
-        httpReq: function (params, callbacks) {
-            window.Android.httpReq(params, callbacks);
-        },
-
         clearDefaultPlayer: function () {
             if (window.selectDefaultPlayerMenu) window.selectDefaultPlayerMenu();
             else localStorage.removeItem('lampa_default_player');
@@ -220,7 +111,7 @@
         saveBookmarks: function () {}
     };
 
-    // 默认出厂配置预设（替代正则修改配置）
+    // 默认出厂配置预设
     try {
         if (!localStorage.getItem('lampa_cordova_initiale')) {
             localStorage.setItem('lampa_cordova_initiale', 'true');
