@@ -170,7 +170,7 @@
     };
 
     window.AndroidJS = {
-        appVersion: function () { return '3.3.3'; },
+        appVersion: function () { return '3.3.3-24'; },
         exit: function () { window.Android.exit(); },
         clearDefaultPlayer: function () {
             if (window.selectDefaultPlayerMenu) window.selectDefaultPlayerMenu();
