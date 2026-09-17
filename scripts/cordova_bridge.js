@@ -173,69 +173,103 @@
     };
 
     // =========================================================================
-    // 核心播放器逻辑提取（供 AndroidJS 和 Android 共用）
+    // 1:1 模拟 MainActivity.runPlayer + configurePlayerIntent
     // =========================================================================
     var nativePlayerEngine = {
-        openPlayer: function (url, data) {
-            // 容错：有些版本的 Lampa 传的是 JSON 字符串，有些传的是对象
-            var playData = {};
+        openPlayer: function (link, data) {
+            // 1. 对应 Kotlin: 解析 jsonStr，若无 url 则强制写入 link
+            var jsonObject = {};
             if (typeof data === 'string') {
-                try { playData = JSON.parse(data); } catch (e) {}
+                try { jsonObject = JSON.parse(data || '{}'); } catch (e) {}
             } else if (typeof data === 'object' && data !== null) {
-                playData = data;
+                jsonObject = data;
+            }
+            if (!jsonObject.url) {
+                jsonObject.url = link;
             }
 
-            // 计算起始播放位置（毫秒）
-            var pos = parseInt((playData.timeline ? playData.timeline.time || -1 : -1) * 1000);
-            
+            var videoUrl = jsonObject.url;
+            if (!videoUrl) {
+                console.error('[Bridge] openPlayer: 缺少有效视频链接');
+                return;
+            }
+
+            // 2. 提取标题、进度
+            var videoTitle = jsonObject.title || (jsonObject.iptv ? "LAMPA TV" : "LAMPA video");
+            var timeline = jsonObject.timeline || {};
+            var posMillis = parseInt((timeline.time || -1) * 1000);
+
+            // 3. 构建通用播放器 Intent Extra (涵盖 MX Player / VLC / 通用标准)
             var intentExtra = {
-                title: playData.title || playData.path || '',
-                position: pos,
+                title: videoTitle,
                 return_result: true,
                 forcedirect: true,
                 forceresume: true
             };
 
+            if (posMillis > 0) {
+                intentExtra.position = posMillis;       // MX Player / 通用毫秒
+                intentExtra.extra_position = posMillis; // VLC
+            }
+
+            // 4. 对应 Kotlin: 提取多集播放列表 (playlist)
+            if (jsonObject.playlist && Array.isArray(jsonObject.playlist) && jsonObject.playlist.length > 1) {
+                var urls = [];
+                var titles = [];
+                jsonObject.playlist.forEach(function (item, idx) {
+                    urls.push(item.url);
+                    titles.push(item.title || ("Item " + (idx + 1)));
+                });
+                // 对齐 MX Player 标准列表 Extra
+                intentExtra.video_list = urls;
+                intentExtra["video_list.name"] = titles;
+                intentExtra.video_list_is_explicit = true;
+            }
+
+            // 5. 组装 Intent 配置
             var intentConfig = {
                 action: window.plugins.intentShim.ACTION_VIEW,
-                url: playData.url || url,
-                position: pos,
+                url: videoUrl,
                 type: "video/*",
                 extras: intentExtra
             };
 
-            // 获取用户在设置中指定的默认播放器包名
+            // 如果用户在 Lampa 设置过指定的默认播放器
             var chosenPlayer = localStorage.getItem('lampa_default_player') || '';
             if (chosenPlayer) {
                 intentConfig.package = chosenPlayer;
             }
 
             if (!window.plugins || !window.plugins.intentShim) {
-                console.warn('[Bridge] 未找到 intentShim 插件，尝试降级打开');
-                if (window.cordova && cordova.InAppBrowser) cordova.InAppBrowser.open(intentConfig.url, '_system');
+                console.warn('[Bridge] 未找到 intentShim 插件');
                 return;
             }
 
-            // 唤起外部播放器并监听播放进度
-            window.plugins.intentShim.startActivityForResult(intentConfig, function (intent) {
-                var extras = intent.extras || {};
-                var time = (extras.position || extras.extra_position) / 1000;
-                var duration = (extras.duration || extras.extra_duration) / 1000;
-                var percent = duration > 0 ? parseInt(time * 100 / duration) : 100;
+            // 6. 启动播放器并监听播放结束返回 (对应 Kotlin: resultPlayer / onActivityResult)
+            window.plugins.intentShim.startActivityForResult(intentConfig, function (resultIntent) {
+                var extras = (resultIntent && resultIntent.extras) ? resultIntent.extras : {};
+                
+                // 兼容不同播放器返回的参数（MX: position, VLC: extra_position 等）
+                var returnPos = extras.position || extras.extra_position || 0;
+                var returnDur = extras.duration || extras.extra_duration || 0;
+                
+                var time = returnPos > 0 ? (returnPos / 1000) : 0;
+                var duration = returnDur > 0 ? (returnDur / 1000) : 0;
+                var percent = (duration > 0 && time > 0) ? Math.floor((time * 100) / duration) : 0;
 
-                // 播放完毕/退出后，回写进度到 Lampa 历史记录
-                if (time && playData.timeline) {
-                    playData.timeline.time = time;
-                    playData.timeline.duration = duration;
-                    playData.timeline.percent = percent;
+                // 播放结束，更新 Lampa 内部播放进度
+                if (time > 0 && timeline) {
+                    timeline.time = time;
+                    timeline.duration = duration;
+                    timeline.percent = percent;
                     if (window.Lampa && Lampa.Timeline) {
-                        Lampa.Timeline.update(playData.timeline);
+                        Lampa.Timeline.update(timeline);
                     }
                 }
             }, function (err) {
-                // 如果指定了默认播放器但启动失败（比如被用户卸载了），清空默认包名并重新弹框选择
+                // 如果指定了包名却拉起失败（例如应用被卸载），降级清空包名并唤起系统选择器
                 if (intentConfig.package) {
-                    console.warn('[Bridge] 预设播放器启动失败，降级为系统应用选择器', err);
+                    console.warn('[Bridge] 预设播放器拉起失败，回退到系统播放器选择', err);
                     delete intentConfig.package;
                     window.plugins.intentShim.startActivityForResult(intentConfig, function () {}, function () {});
                 } else {
