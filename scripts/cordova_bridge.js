@@ -337,24 +337,77 @@
             }
         },
         openPlayer: nativePlayerEngine.openPlayer,
-        openTorrentLink: function (urlOrMagnet, jsonString) {
-            var jsonData = {};
-            try { jsonData = JSON.parse(jsonString || '{}'); } catch (e) {}
+        openTorrentLink: function (url, jsonString) {
+            if (!url) return false;
 
-            var intentExtra = {
-                title: jsonData.title || '',
-                poster: jsonData.poster || '',
-                action: "play",
-                data: { lampa: true }
+            // 1. 对应 Kotlin: val jsonData = if (jsonString == "\"\"") JSONObject() else JSONObject(jsonString)
+            var jsonData = {};
+            if (jsonString && jsonString !== '""') {
+                try {
+                    jsonData = (typeof jsonString === 'string') ? JSON.parse(jsonString) : jsonString;
+                } catch (e) {
+                    jsonData = {};
+                }
+            }
+
+            // 2. 判断是否是 magnet 磁力链
+            var isMagnet = url.toLowerCase().indexOf('magnet:') === 0;
+
+            // 3. 构建 Extras
+            var extras = {};
+
+            // 标题三字段兼容 (title / displayName / forcename)
+            if (jsonData.title) {
+                extras.title = jsonData.title;
+                extras.displayName = jsonData.title;
+                extras.forcename = jsonData.title;
+            }
+
+            // 封面海报
+            if (jsonData.poster) {
+                extras.poster = jsonData.poster;
+            }
+
+            // media -> category
+            if (jsonData.media) {
+                extras.category = jsonData.media;
+            }
+
+            // data 对象透传
+            if (jsonData.data && typeof jsonData.data === 'object') {
+                extras.data = JSON.stringify(jsonData.data);
+            }
+
+            // 4. 构建 Intent 配置
+            var intentConfig = {
+                action: window.plugins.intentShim.ACTION_VIEW,
+                url: url,
+                category: "android.intent.category.BROWSABLE",
+                extras: extras
             };
 
-            if (window.plugins && window.plugins.intentShim) {
-                window.plugins.intentShim.startActivity({
-                    action: window.plugins.intentShim.ACTION_VIEW,
-                    url: urlOrMagnet,
-                    extras: intentExtra
-                }, function () {}, function () {});
+            // 对应 Kotlin: 非 magnet 需要设置 MIME 类型和 FLAG_GRANT_READ_URI_PERMISSION
+            if (!isMagnet) {
+                intentConfig.type = "application/x-bittorrent";
+                // 1 对应 Intent.FLAG_GRANT_READ_URI_PERMISSION
+                intentConfig.flags = 1; 
             }
+
+            // 5. 发送 Intent
+            if (window.plugins && window.plugins.intentShim) {
+                window.plugins.intentShim.startActivity(
+                    intentConfig,
+                    function () {
+                        console.log('[Bridge] Torrent 启动成功');
+                    },
+                    function (err) {
+                        console.error('[Bridge] 未找到可处理种子的应用(如 TorrServe):', err);
+                    }
+                );
+                return true;
+            }
+
+            return false;
         },
         voiceStart: function () {
             if (!window.plugins || !window.plugins.intentShim) return;
