@@ -189,7 +189,91 @@
                 pt: 'Falha na verificação do pacote (arquivo corrompido), tente novamente',
                 ro: 'Verificarea pachetului a eșuat (fișier corupt), vă rugăm să reîncercați'
             },
-            aston_update_sub: { zh: '在线极速下载并覆盖升级', en: 'Download and update online', ru: 'Онлайн загрузка и обновление', uk: 'Онлайн завантаження та оновлення', be: 'Анлайн загрузка і абнаўленне', bg: 'Онлайн изтегляне и обновяване', cs: 'Online stažení a aktualizace', fr: 'Télécharger et mettre à jour en ligne', he: 'הורד ועדכן באופן מקוון', pl: 'Pobierz i zaktualizuj online', pt: 'Baixar e atualizar online', ro: 'Descărcați și actualizați online' }
+            aston_update_sub: { zh: '在线极速下载并覆盖升级', en: 'Download and update online', ru: 'Онлайн загрузка и обновление', uk: 'Онлайн завантаження та оновлення', be: 'Анлайн загрузка і абнаўленне', bg: 'Онлайн изтегляне и обновяване', cs: 'Online stažení a aktualizace', fr: 'Télécharger et mettre à jour en ligne', he: 'הורד ועדכן באופן מקוון', pl: 'Pobierz i zaktualizuj online', pt: 'Baixar e atualizar online', ro: 'Descărcați și actualizați online' },
+            aston_clear_cache_title: {
+            zh: '清理 Cordova 缓存',
+            en: 'Clear Cordova Cache',
+            ru: 'Очистить кэш Cordova',
+            uk: 'Очистити кеш Cordova',
+            be: 'Ачысціць кэш Cordova',
+            bg: 'Изчистване на кеша на Cordova',
+            cs: 'Vymazat mezipaměť Cordova',
+            fr: 'Vider le cache Cordova',
+            he: 'נקה מטמון Cordova',
+            pl: 'Wyczyść pamięć podręczną Cordova',
+            pt: 'Limpar cache do Cordova',
+            ro: 'Șterge memoria cache Cordova'
+        },
+        aston_clear_cache_descr: {
+            zh: '清除应用缓存目录中的临时文件(包括内部与外部缓存)',
+            en: 'Clear temporary files in the app cache directories (internal and external)',
+            ru: 'Удаляет временные файлы из каталогов кэша приложения (внутренний и внешний)',
+            uk: 'Видаляє тимчасові файли з каталогів кешу застосунку (внутрішній і зовнішній)',
+            be: 'Выдаляе часовыя файлы з каталогаў кэшу праграмы (унутраны і знешні)',
+            bg: 'Изтрива временните файлове от директориите за кеш на приложението (вътрешна и външна)',
+            cs: 'Odstraní dočasné soubory z adresářů mezipaměti aplikace (interní a externí)',
+            fr: 'Supprime les fichiers temporaires des répertoires de cache de l\'application (interne et externe)',
+            he: 'מוחק קבצים זמניים מתיקיות המטמון של האפליקציה (פנימי וחיצוני)',
+            pl: 'Usuwa pliki tymczasowe z katalogów pamięci podręcznej aplikacji (wewnętrznej i zewnętrznej)',
+            pt: 'Remove arquivos temporários dos diretórios de cache do aplicativo (interno e externo)',
+            ro: 'Șterge fișierele temporare din directoarele cache ale aplicației (intern și extern)'
+        },
+        aston_clear_cache_cleaning: {
+            zh: '正在清理缓存...',
+            en: 'Clearing cache...',
+            ru: 'Очистка кэша...',
+            uk: 'Очищення кешу...',
+            be: 'Ачыстка кэшу...',
+            bg: 'Изчистване на кеша...',
+            cs: 'Čištění mezipaměti...',
+            fr: 'Nettoyage du cache...',
+            he: 'מנקה מטמון...',
+            pl: 'Czyszczenie pamięci podręcznej...',
+            pt: 'Limpando cache...',
+            ro: 'Se șterge memoria cache...'
+        },
+        aston_clear_cache_done: {
+            zh: '缓存清理完成',
+            en: 'Cache cleared',
+            ru: 'Кэш очищен',
+            uk: 'Кеш очищено',
+            be: 'Кэш ачышчаны',
+            bg: 'Кешът е изчистен',
+            cs: 'Mezipaměť vymazána',
+            fr: 'Cache vidé',
+            he: 'המטמון נוקה',
+            pl: 'Pamięć podręczna wyczyszczona',
+            pt: 'Cache limpo',
+            ro: 'Memoria cache a fost ștearsă'
+        },
+        aston_clear_cache_failed: {
+            zh: '缓存清理失败',
+            en: 'Failed to clear cache',
+            ru: 'Не удалось очистить кэш',
+            uk: 'Не вдалося очистити кеш',
+            be: 'Не атрымалася ачысціць кэш',
+            bg: 'Неуспешно изчистване на кеша',
+            cs: 'Vymazání mezipaměti se nezdařilo',
+            fr: 'Échec du vidage du cache',
+            he: 'ניקוי המטמון נכשל',
+            pl: 'Nie udało się wyczyścić pamięci podręcznej',
+            pt: 'Falha ao limpar o cache',
+            ro: 'Ștergerea memoriei cache a eșuat'
+        },
+        aston_clear_cache_unsupported: {
+            zh: '当前环境不支持文件系统清理',
+            en: 'File system cleanup is not supported in this environment',
+            ru: 'Очистка файловой системы не поддерживается в этой среде',
+            uk: 'Очищення файлової системи не підтримується в цьому середовищі',
+            be: 'Ачыстка файлавай сістэмы не падтрымліваецца ў гэтым асяроддзі',
+            bg: 'Изчистването на файловата система не се поддържа в тази среда',
+            cs: 'Čištění souborového systému není v tomto prostředí podporováno',
+            fr: 'Le nettoyage du système de fichiers n\'est pas pris en charge dans cet environnement',
+            he: 'ניקוי מערכת הקבצים אינו נתמך בסביבה זו',
+            pl: 'Czyszczenie systemu plików nie jest obsługiwane w tym środowisku',
+            pt: 'A limpeza do sistema de arquivos não é suportada neste ambiente',
+            ro: 'Curățarea sistemului de fișiere nu este acceptată în acest mediu'
+        }
         });
         window._aston_full_lang_inited = true;
     }
@@ -657,10 +741,103 @@
         triggerAstonQuickMenuThrottled();
     }, false);
 
+    // ------- 清理逻辑 -------
+    function clearCordovaCache(callback) {
+        var done = function (ok, msgKey) {
+            if (typeof callback === 'function') callback(ok, msgKey);
+        };
+
+        if (!(window.resolveLocalFileSystemURL && window.cordova && cordova.file)) {
+            done(false, 'aston_clear_cache_unsupported');
+            return;
+        }
+
+        var dirs = [cordova.file.cacheDirectory, cordova.file.externalCacheDirectory].filter(Boolean);
+        var dirIndex = 0;
+
+        var clearNextDir = function () {
+            if (dirIndex >= dirs.length) {
+                done(true, 'aston_clear_cache_done');
+                return;
+            }
+            var dirPath = dirs[dirIndex++];
+
+            window.resolveLocalFileSystemURL(dirPath, function (dirEntry) {
+                var reader = dirEntry.createReader();
+                var allEntries = [];
+
+                var readBatch = function () {
+                    reader.readEntries(function (entries) {
+                        if (entries.length === 0) {
+                            removeAll(allEntries);
+                        } else {
+                            allEntries = allEntries.concat(entries);
+                            readBatch();
+                        }
+                    }, function () {
+                        removeAll(allEntries);
+                    });
+                };
+
+                var removeAll = function (entries) {
+                    var total = entries.length;
+                    if (total === 0) { clearNextDir(); return; }
+
+                    var finished = 0;
+                    var onFinish = function () {
+                        finished++;
+                        if (finished >= total) clearNextDir();
+                    };
+
+                    entries.forEach(function (entry) {
+                        if (entry.isDirectory) {
+                            entry.removeRecursively(onFinish, onFinish);
+                        } else {
+                            entry.remove(onFinish, onFinish);
+                        }
+                    });
+                };
+
+                readBatch();
+            }, function () {
+                clearNextDir(); // 该目录不存在/打不开,跳过继续下一个
+            });
+        };
+
+        clearNextDir();
+    }
+
+    // ------- 注册到 Lampa 设置菜单 -------
+    function addSetting() {
+        if (!window.Lampa || !Lampa.SettingsApi) return;
+
+        Lampa.SettingsApi.addParam({
+            component: 'data',
+            param: {
+                name: 'aston_clear_cordova_cache',
+                type: 'button',
+                values: '',
+                default: ''
+            },
+            field: {
+                name: Lampa.Lang.translate('aston_clear_cache_title'),
+                description: Lampa.Lang.translate('aston_clear_cache_descr')
+            },
+            onChange: function () {
+                Lampa.Noty.show(Lampa.Lang.translate('aston_clear_cache_cleaning'));
+
+                clearCordovaCache(function (ok, msgKey) {
+                    Lampa.Noty.show(Lampa.Lang.translate(msgKey));
+                });
+            }
+        });
+    }
+
     // ================= 11. 双重检查启动引擎 =================
     function startEngine() {
         injectStyles();
         initAstonI18n();
+        addSetting();
 
         var hasChecked = false;
         function doCheckOnce() {
