@@ -5,6 +5,36 @@
 (function () {
     'use strict';
 
+    // =========================================================================
+    // 拦截核心解码库：强制任何试图请求远端 vender/ 的脚本重定向为本地 ./vender/
+    // =========================================================================
+    var originalCreateElement = document.createElement;
+    document.createElement = function (tagName) {
+        var el = originalCreateElement.apply(this, arguments);
+        if (tagName && typeof tagName === 'string' && tagName.toLowerCase() === 'script') {
+            var originalSetAttribute = el.setAttribute;
+            el.setAttribute = function (name, value) {
+                if (name === 'src' && typeof value === 'string' && value.indexOf('vender/') !== -1) {
+                    value = './vender/' + value.split('vender/')[1];
+                }
+                return originalSetAttribute.call(this, name, value);
+            };
+            Object.defineProperty(el, 'src', {
+                set: function (value) {
+                    if (typeof value === 'string' && value.indexOf('vender/') !== -1) {
+                        value = './vender/' + value.split('vender/')[1];
+                    }
+                    el.setAttribute('src', value);
+                },
+                get: function () {
+                    return el.getAttribute('src');
+                },
+                configurable: true
+            });
+        }
+        return el;
+    };
+
     // 0. 证书信任
     if (!window._cordova_certs_accepted && window.cordovaHTTP) {
         try {
