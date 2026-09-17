@@ -177,50 +177,51 @@
     // =========================================================================
     var nativePlayerEngine = {
         openPlayer: function (link, data) {
-            // 1. 对应 Kotlin: 解析 jsonStr，若无 url 则强制写入 link
-            var jsonObject = {};
+            // 1. 参数归一化：支持外部传字符串或对象
+            var playData = {};
             if (typeof data === 'string') {
-                try { jsonObject = JSON.parse(data || '{}'); } catch (e) {}
+                try { playData = JSON.parse(data || '{}'); } catch (e) {}
             } else if (typeof data === 'object' && data !== null) {
-                jsonObject = data;
-            }
-            if (!jsonObject.url) {
-                jsonObject.url = link;
+                playData = data;
             }
 
-            var videoUrl = jsonObject.url;
+            // 对应 Kotlin: 优先使用 playData.url，没有则回退为入参 link
+            var videoUrl = playData.url || link;
             if (!videoUrl) {
-                console.error('[Bridge] openPlayer: 缺少有效视频链接');
+                console.error('[Bridge] openPlayer 缺少视频地址');
                 return;
             }
 
-            // 2. 提取标题、进度
-            var videoTitle = jsonObject.title || (jsonObject.iptv ? "LAMPA TV" : "LAMPA video");
-            var timeline = jsonObject.timeline || {};
+            // 2. 提取基础播放信息
+            var title = playData.title || playData.path || (playData.iptv ? "LAMPA TV" : "LAMPA video");
+            var timeline = playData.timeline || {};
             var posMillis = parseInt((timeline.time || -1) * 1000);
 
-            // 3. 构建通用播放器 Intent Extra (涵盖 MX Player / VLC / 通用标准)
+            // 3. 构建 Extras（集齐 MX Player、VLC、ViMu 专属起播参数）
             var intentExtra = {
-                title: videoTitle,
+                title: title,
+                forcename: title,
                 return_result: true,
+                sticky: false,
+                from_start: false,
                 forcedirect: true,
                 forceresume: true
             };
 
             if (posMillis > 0) {
-                intentExtra.position = posMillis;       // MX Player / 通用毫秒
+                intentExtra.position = posMillis;       // 通用 / MX Player
                 intentExtra.extra_position = posMillis; // VLC
+                intentExtra.startfrom = posMillis;      // ViMu
             }
 
-            // 4. 对应 Kotlin: 提取多集播放列表 (playlist)
-            if (jsonObject.playlist && Array.isArray(jsonObject.playlist) && jsonObject.playlist.length > 1) {
+            // 4. 支持多集播放列表 (对应 Kotlin: playlist 转换)
+            if (playData.playlist && Array.isArray(playData.playlist) && playData.playlist.length > 1) {
                 var urls = [];
                 var titles = [];
-                jsonObject.playlist.forEach(function (item, idx) {
+                playData.playlist.forEach(function (item, idx) {
                     urls.push(item.url);
                     titles.push(item.title || ("Item " + (idx + 1)));
                 });
-                // 对齐 MX Player 标准列表 Extra
                 intentExtra.video_list = urls;
                 intentExtra["video_list.name"] = titles;
                 intentExtra.video_list_is_explicit = true;
@@ -231,10 +232,11 @@
                 action: window.plugins.intentShim.ACTION_VIEW,
                 url: videoUrl,
                 type: "video/*",
+                position: posMillis,
                 extras: intentExtra
             };
 
-            // 如果用户在 Lampa 设置过指定的默认播放器
+            // 读取默认播放器
             var chosenPlayer = localStorage.getItem('lampa_default_player') || '';
             if (chosenPlayer) {
                 intentConfig.package = chosenPlayer;
@@ -245,37 +247,51 @@
                 return;
             }
 
-            // 6. 启动播放器并监听播放结束返回 (对应 Kotlin: resultPlayer / onActivityResult)
-            window.plugins.intentShim.startActivityForResult(intentConfig, function (resultIntent) {
-                var extras = (resultIntent && resultIntent.extras) ? resultIntent.extras : {};
-                
-                // 兼容不同播放器返回的参数（MX: position, VLC: extra_position 等）
-                var returnPos = extras.position || extras.extra_position || 0;
-                var returnDur = extras.duration || extras.extra_duration || 0;
-                
-                var time = returnPos > 0 ? (returnPos / 1000) : 0;
-                var duration = returnDur > 0 ? (returnDur / 1000) : 0;
-                var percent = (duration > 0 && time > 0) ? Math.floor((time * 100) / duration) : 0;
+            // 6. 1:1 还原你原模板的 launchVideoIntent，完整保留进度处理与自动降级重试
+            function launchVideoIntent(config, isRetry) {
+                window.plugins.intentShim.startActivityForResult(config, function (itent) {
+                    var extras = (itent && itent.extras) ? itent.extras : {};
 
-                // 播放结束，更新 Lampa 内部播放进度
-                if (time > 0 && timeline) {
-                    timeline.time = time;
-                    timeline.duration = duration;
-                    timeline.percent = percent;
-                    if (window.Lampa && Lampa.Timeline) {
-                        Lampa.Timeline.update(timeline);
+                    // 读取播放器返回的进度（毫秒 -> 秒）
+                    var returnPos = extras.position || extras.extra_position || 0;
+                    var returnDur = extras.duration || extras.extra_duration || 0;
+
+                    var time = returnPos > 0 ? (returnPos / 1000) : 0;
+                    var duration = returnDur > 0 ? (returnDur / 1000) : 0;
+                    var percent = duration > 0 ? parseInt(time * 100 / duration) : 100;
+
+                    // 核心：精准回写各种层级的进度对象与回调
+                    if (time && playData.timeline) {
+                        playData.timeline.time = time;
+                        playData.timeline.duration = duration;
+                        playData.timeline.percent = percent;
+
+                        // 触发页面插件自身的私有进度回调（如果有）
+                        if (typeof playData.timeline.handler === 'function') {
+                            playData.timeline.handler(percent, time, duration);
+                        }
+
+                        // 触发全局 Timeline 更新
+                        if (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.update === 'function') {
+                            Lampa.Timeline.update(playData.timeline);
+                        } else if (typeof Timeline !== 'undefined' && typeof Timeline.update === 'function') {
+                            Timeline.update(playData.timeline);
+                        }
                     }
-                }
-            }, function (err) {
-                // 如果指定了包名却拉起失败（例如应用被卸载），降级清空包名并唤起系统选择器
-                if (intentConfig.package) {
-                    console.warn('[Bridge] 预设播放器拉起失败，回退到系统播放器选择', err);
-                    delete intentConfig.package;
-                    window.plugins.intentShim.startActivityForResult(intentConfig, function () {}, function () {});
-                } else {
-                    console.error('[Bridge] 启动播放器失败:', err);
-                }
-            });
+                }, function (err) {
+                    // 安全降级：万一指定的播放器被卸载了，自动移除包名回退到系统每次询问！
+                    if (!isRetry && config.package) {
+                        console.log("[Bridge] 指定播放器启动失败，自动回退到系统选择器...");
+                        var fallbackConfig = Object.assign({}, config);
+                        delete fallbackConfig.package;
+                        launchVideoIntent(fallbackConfig, true);
+                    } else {
+                        console.error("[Bridge] 启动播放器失败:", err);
+                    }
+                });
+            }
+
+            launchVideoIntent(intentConfig, false);
         }
     };
 
