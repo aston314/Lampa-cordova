@@ -220,6 +220,16 @@ LOCAL_PLUGINS_INJECT_CODE = "\n        ".join(local_plugin_pushes)
 # ================= 6. 极简核心替换规则（仅保留最精简的 5 条内部补丁） =================
 STRICT_RULES = [
     {
+        "name": "禁用频道更新 updateChannel 避免 DOM 节点查找崩溃",
+        "pattern": r"if\s*\(\s*checkVersion\(28\)\s*\)\s*AndroidJS\.updateChannel\(where\);",
+        "new": "if (checkVersion(28)) !!window.cordova ? null : AndroidJS.updateChannel(where);"
+    },
+    {
+        "name": "修复 updateChannels 中 AndroidJS.saveBookmarks 语法崩溃",
+        "pattern": r"typeof\s+AndroidJS\.saveBookmarks\s*!==\s*['\"]undefined['\"]",
+        "new": "typeof AndroidJS !== 'undefined' && typeof AndroidJS.saveBookmarks !== 'undefined'"
+    },
+    {
         "name": "海报播放 action: play 注入 1",
         "pattern": r"poster:\s*SERVER\.movie\.img,\s*media:\s*SERVER\.movie\.name\s*\?\s*'tv'\s*:\s*'movie',\s*data:\s*\{",
         "new": "poster: SERVER.movie.img,\n          media: SERVER.movie.name ? 'tv' : 'movie',\n          action: \"play\",\n          data: {"
