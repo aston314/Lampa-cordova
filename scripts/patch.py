@@ -224,16 +224,13 @@ STRICT_RULES = [
         "pattern": r"if\s*\(\s*\['ru',\s*'en'\]\.indexOf\(code\)\s*>=\s*0\s*\)\s*loadTask\(\);",
         "new": ALL_LANG_EMBEDDED_CODE
     },
-    # {
-    #     "name": "强制本地加载核心解码库 vender",
-    #     "pattern": r"return\s+window\.location\.protocol\s*==\s*['\"]file:['\"]\s*\|\|\s*window\.location\.href\.indexOf\(['\"]chrome-extension['\"]\)\s*>\s*-1\s*\?\s*object\$2\.github_lampa\s*\+\s*['\"]vender/['\"]\s*\+\s*lib\s*:\s*['\"]\./vender/['\"]\s*\+\s*lib;",
-    #     "new": "return './vender/' + lib;"
-    # },
     {
         "name": "强制本地加载核心解码库 vender",
-        "pattern": r"return\s+window\.location\.protocol\s*==\s*['\"]file:['\"][^;]*?vender\/[^;]*?;",
-        "new": "return './vender/' + lib;"
-    }
+        # 直接匹配这三个唯一的库名及其 .map() 整体
+        "pattern": r"\['hls/hls\.js',\s*'dash/dash\.js',\s*'qrcode/qrcode\.js'\]\.map\([\s\S]*?\}\)",
+        # 一步到位！直接替换为纯本地路径数组！
+        "new": "['./vender/hls/hls.js', './vender/dash/dash.js', './vender/qrcode/qrcode.js']"
+    },
     {
         "name": "动态本地插件自动加载注册",
         "pattern": r"puts\.push\(['\"]\./plugins/modification\.js['\"]\);",
