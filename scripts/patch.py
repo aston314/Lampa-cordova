@@ -28,8 +28,8 @@ def get_current_repo():
 REPO_NAME = get_current_repo()
 BUILD_NUMBER = int(os.environ.get("BUILD_NUMBER", "1"))
 
-# ================= 0. 发送 ntfy.sh 手机告警函数 =================
-def send_ntfy_alert(failed_rule_names):
+# ================= 0. 发送 ntfy.sh 手机告警函数 (支持分级) =================
+def send_ntfy_alert(failed_rule_names, is_fatal=True):
     ntfy_topic = os.environ.get("NTFY_TOPIC", "").strip()
     if not ntfy_topic:
         print("[Info] 未配置 NTFY_TOPIC，跳过手机告警通知。")
@@ -39,16 +39,27 @@ def send_ntfy_alert(failed_rule_names):
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     action_url = f"https://github.com/{repo}/actions/runs/{run_id}" if run_id and repo else ""
 
-    message = "上游 yumata/lampa 源码有更新，但以下核心规则未匹配成功，已自动终止打包：\n\n"
-    for name in failed_rule_names:
-        message += f"❌ {name}\n"
-    message += "\n请点击此通知直达 GitHub Actions 查看详情并更新规则。"
+    if is_fatal:
+        message = "上游源码发生不兼容变更，以下【致命规则】未匹配，已终止打包：\n\n"
+        for name in failed_rule_names:
+            message += f"🛑 {name}\n"
+        message += "\n请点击通知排查并更新规则，修复后方可继续产出 APK。"
+        query_params = {
+            "title": "🚨 Lampa 源码致命规则熔断",
+            "priority": "urgent",
+            "tags": "skull,rotating_light"
+        }
+    else:
+        message = "上游源码有变动，以下【非致命规则】匹配失败。为保障 APK 每日构建，已自动跳过并继续打包：\n\n"
+        for name in failed_rule_names:
+            message += f"⚠️ {name}\n"
+        message += "\nAPK 已照常发布，但部分次要优化未生效，建议抽空查看适配。"
+        query_params = {
+            "title": "⚠️ Lampa 非致命规则失效警告",
+            "priority": "default",
+            "tags": "warning,wrench"
+        }
 
-    query_params = {
-        "title": "⚠️ Lampa 源码规则熔断报警",
-        "priority": "urgent",
-        "tags": "warning,skull"
-    }
     if action_url:
         query_params["click"] = action_url
 
@@ -57,7 +68,7 @@ def send_ntfy_alert(failed_rule_names):
 
     try:
         urllib.request.urlopen(req, timeout=10)
-        print(f"[Info] 🔔 已成功向 ntfy.sh/{ntfy_topic} 发送手机故障告警通知！")
+        print(f"[Info] 🔔 已成功向 ntfy.sh/{ntfy_topic} 发送手机告警（Fatal={is_fatal}）！")
     except Exception as e:
         print(f"[Warning] ntfy.sh 通知发送失败: {e}")
 
@@ -95,7 +106,7 @@ if os.path.exists(BRIDGE_SRC):
     print(f"[Success] 成功同步原生桥接层文件: {BRIDGE_SRC} -> {BRIDGE_DST}")
 else:
     print(f"[FATAL ERROR] 找不到桥接文件: {BRIDGE_SRC}，打包终止！")
-    send_ntfy_alert(["找不到 scripts/cordova_bridge.js 文件"])
+    send_ntfy_alert(["找不到 scripts/cordova_bridge.js 文件"], is_fatal=True)
     sys.exit(1)
 
 
@@ -103,7 +114,7 @@ else:
 html_file = os.path.join(UPSTREAM_DIR, "index.html")
 if not os.path.exists(html_file):
     print(f"[FATAL ERROR] 找不到入口文件: {html_file}，打包终止！")
-    send_ntfy_alert(["找不到入口文件 index.html"])
+    send_ntfy_alert(["找不到入口文件 index.html"], is_fatal=True)
     sys.exit(1)
 
 with open(html_file, "r", encoding="utf-8") as f:
@@ -168,7 +179,7 @@ if "<head>" in html_content:
     print("[Success] index.html 注入就绪（已挂载 cordova_bridge.js）")
 else:
     print("[FATAL ERROR] index.html 中未找到 <head> 标签！")
-    send_ntfy_alert(["index.html 中未找到 <head> 标签"])
+    send_ntfy_alert(["index.html 中未找到 <head> 标签"], is_fatal=True)
     sys.exit(1)
 
 
@@ -217,24 +228,27 @@ if os.path.isdir(LOCAL_PLUGINS_DIR):
 LOCAL_PLUGINS_INJECT_CODE = "\n        ".join(local_plugin_pushes)
 
 
-# ================= 6. 极简核心替换规则（仅保留最精简的 5 条内部补丁） =================
+# ================= 6. 分级规则匹配与容错替换 =================
+# critical: True  -> 匹配失败直接终止打包并发出急迫通知
+# critical: False -> 匹配失败仅发送警告通知，不阻断打包（保证日常出包）
 STRICT_RULES = [
     {
         "name": "全语言包自动内嵌",
         "pattern": r"if\s*\(\s*\['ru',\s*'en'\]\.indexOf\(code\)\s*>=\s*0\s*\)\s*loadTask\(\);",
-        "new": ALL_LANG_EMBEDDED_CODE
+        "new": ALL_LANG_EMBEDDED_CODE,
+        "critical": True
     },
     {
         "name": "强制本地加载核心解码库 vender",
-        # 直接匹配这三个唯一的库名及其 .map() 整体
         "pattern": r"\['hls/hls\.js',\s*'dash/dash\.js',\s*'qrcode/qrcode\.js'\]\.map\([\s\S]*?\}\)",
-        # 一步到位！直接替换为纯本地路径数组！
-        "new": "['./vender/hls/hls.js', './vender/dash/dash.js', './vender/qrcode/qrcode.js']"
+        "new": "['./vender/hls/hls.js', './vender/dash/dash.js', './vender/qrcode/qrcode.js']",
+        "critical": False
     },
     {
         "name": "动态本地插件自动加载注册",
         "pattern": r"puts\.push\(['\"]\./plugins/modification\.js['\"]\);",
-        "new": LOCAL_PLUGINS_INJECT_CODE
+        "new": LOCAL_PLUGINS_INJECT_CODE,
+        "critical": True
     }
 ]
 
@@ -243,7 +257,7 @@ TARGET_FILES = [
     os.path.join(UPSTREAM_DIR, "app.min.js")
 ]
 
-print("\n[Info] 开始进行核心补丁匹配与校验...")
+print("\n[Info] 开始进行核心补丁匹配与分级校验...")
 
 file_data = {}
 for file_path in TARGET_FILES:
@@ -251,13 +265,14 @@ for file_path in TARGET_FILES:
         with open(file_path, "r", encoding="utf-8") as f:
             file_data[file_path] = f.read()
 
-has_error = False
-failed_rules = []
+critical_failed_rules = []
+warning_failed_rules = []
 
 for rule in STRICT_RULES:
     rule_name = rule["name"]
     pattern = rule["pattern"]
     new_text = rule["new"]
+    is_critical = rule.get("critical", True)
     total_replaced = 0
     
     for file_path, content in file_data.items():
@@ -268,21 +283,34 @@ for rule in STRICT_RULES:
             print(f"  -> 在 {os.path.basename(file_path)} 中成功匹配并替换了 {count} 处")
 
     if total_replaced == 0:
-        print(f"❌ [VERIFY FAILED] 规则【{rule_name}】未匹配！\n   Pattern: {pattern}")
-        has_error = True
-        failed_rules.append(rule_name)
+        if is_critical:
+            print(f"❌ [CRITICAL FAILED] 致命规则【{rule_name}】未匹配！\n   Pattern: {pattern}")
+            critical_failed_rules.append(rule_name)
+        else:
+            print(f"⚠️ [WARNING FAILED] 非致命规则【{rule_name}】未匹配（已跳过，容错放行）\n   Pattern: {pattern}")
+            warning_failed_rules.append(rule_name)
     else:
-        print(f"✅ [VERIFY PASSED] 规则【{rule_name}】通过（替换 {total_replaced} 处）")
+        status_tag = "CRITICAL" if is_critical else "OPTIONAL"
+        print(f"✅ [VERIFY PASSED] [{status_tag}] 规则【{rule_name}】通过（替换 {total_replaced} 处）")
 
-if has_error:
+# 1. 如果有致命错误，必须阻断打包
+if critical_failed_rules:
     print("=" * 65)
-    print("[FATAL ERROR] 存在未通过校验的规则，正在发送通知...")
-    send_ntfy_alert(failed_rules)
+    print("[FATAL ERROR] 存在致命规则未通过校验，打包强制终止，正在发送阻断通知...")
+    send_ntfy_alert(critical_failed_rules, is_fatal=True)
     print("=" * 65)
     sys.exit(1)
 
+# 2. 如果仅有非致命警告，发送报警提醒用户，但继续写回文件以保证 APK 打包
+if warning_failed_rules:
+    print("=" * 65)
+    print("[WARNING] 存在非致命规则匹配失效，已记录警告并通知，继续生成 APK...")
+    send_ntfy_alert(warning_failed_rules, is_fatal=False)
+    print("=" * 65)
+
+# 写回修改后的文件
 for file_path, content in file_data.items():
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-print(f"\n[Success] 全部 {len(STRICT_RULES)} 条核心规则验证通过，精简架构就绪！准许打包 APK。\n")
+print(f"\n[Success] 规则校验通过（容错生效），精简架构就绪！准许继续打包 APK。\n")
