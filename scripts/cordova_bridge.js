@@ -187,9 +187,46 @@
             if (window.selectDefaultPlayerMenu) window.selectDefaultPlayerMenu();
             else localStorage.removeItem('lampa_default_player');
         },
-        openYoutube: function (link) {
+        openYoutube: function (str) {
+            if (!str) return;
+
+            // 1. 兼容处理：如果传进来的是完整链接则直接用；如果是 ID，则拼接标准 YouTube 播放地址
+            var fullUrl = (typeof str === 'string' && (str.indexOf('http://') === 0 || str.indexOf('https://') === 0))
+                ? str
+                : 'https://www.youtube.com/watch?v=' + str;
+
+            // 获取当前语言环境，与 voiceStart 保持一致风格
+            var curL = (window.Lampa && Lampa.Storage ? Lampa.Storage.get('language') : localStorage.getItem('language')) || 'en';
+
             if (window.plugins && window.plugins.intentShim) {
-                window.plugins.intentShim.startActivity({ action: window.plugins.intentShim.ACTION_VIEW, url: link });
+                window.plugins.intentShim.startActivity(
+                    {
+                        action: window.plugins.intentShim.ACTION_VIEW,
+                        url: fullUrl
+                    },
+                    function () {
+                        console.log('[Bridge] YouTube 打开成功');
+                    },
+                    function (err) {
+                        console.error('[Bridge] 未找到 YouTube 对应应用:', err);
+                        
+                        // 1:1 还原官方 Kotlin: App.toast(R.string.no_youtube_activity_found, true)
+                        if (window.Lampa && Lampa.Noty) {
+                            var tip = (curL === 'zh') ? '未找到可用的 YouTube 播放器' : 'No YouTube activity found';
+                            Lampa.Noty.show(tip);
+                        }
+
+                        // 电视端兜底方案：如果装了系统浏览器，尝试通过浏览器唤起
+                        if (window.cordova && cordova.InAppBrowser) {
+                            cordova.InAppBrowser.open(fullUrl, '_system');
+                        }
+                    }
+                );
+            } else {
+                // 插件不存在时的降级兜底
+                if (window.cordova && cordova.InAppBrowser) {
+                    cordova.InAppBrowser.open(fullUrl, '_system');
+                }
             }
         },
         openPlayer: function (link, data) {
