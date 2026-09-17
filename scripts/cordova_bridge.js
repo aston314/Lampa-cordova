@@ -173,6 +173,79 @@
     };
 
     // =========================================================================
+    // 核心播放器逻辑提取（供 AndroidJS 和 Android 共用）
+    // =========================================================================
+    var nativePlayerEngine = {
+        openPlayer: function (url, data) {
+            // 容错：有些版本的 Lampa 传的是 JSON 字符串，有些传的是对象
+            var playData = {};
+            if (typeof data === 'string') {
+                try { playData = JSON.parse(data); } catch (e) {}
+            } else if (typeof data === 'object' && data !== null) {
+                playData = data;
+            }
+
+            // 计算起始播放位置（毫秒）
+            var pos = parseInt((playData.timeline ? playData.timeline.time || -1 : -1) * 1000);
+            
+            var intentExtra = {
+                title: playData.title || playData.path || '',
+                position: pos,
+                return_result: true,
+                forcedirect: true,
+                forceresume: true
+            };
+
+            var intentConfig = {
+                action: window.plugins.intentShim.ACTION_VIEW,
+                url: playData.url || url,
+                position: pos,
+                type: "video/*",
+                extras: intentExtra
+            };
+
+            // 获取用户在设置中指定的默认播放器包名
+            var chosenPlayer = localStorage.getItem('lampa_default_player') || '';
+            if (chosenPlayer) {
+                intentConfig.package = chosenPlayer;
+            }
+
+            if (!window.plugins || !window.plugins.intentShim) {
+                console.warn('[Bridge] 未找到 intentShim 插件，尝试降级打开');
+                if (window.cordova && cordova.InAppBrowser) cordova.InAppBrowser.open(intentConfig.url, '_system');
+                return;
+            }
+
+            // 唤起外部播放器并监听播放进度
+            window.plugins.intentShim.startActivityForResult(intentConfig, function (intent) {
+                var extras = intent.extras || {};
+                var time = (extras.position || extras.extra_position) / 1000;
+                var duration = (extras.duration || extras.extra_duration) / 1000;
+                var percent = duration > 0 ? parseInt(time * 100 / duration) : 100;
+
+                // 播放完毕/退出后，回写进度到 Lampa 历史记录
+                if (time && playData.timeline) {
+                    playData.timeline.time = time;
+                    playData.timeline.duration = duration;
+                    playData.timeline.percent = percent;
+                    if (window.Lampa && Lampa.Timeline) {
+                        Lampa.Timeline.update(playData.timeline);
+                    }
+                }
+            }, function (err) {
+                // 如果指定了默认播放器但启动失败（比如被用户卸载了），清空默认包名并重新弹框选择
+                if (intentConfig.package) {
+                    console.warn('[Bridge] 预设播放器启动失败，降级为系统应用选择器', err);
+                    delete intentConfig.package;
+                    window.plugins.intentShim.startActivityForResult(intentConfig, function () {}, function () {});
+                } else {
+                    console.error('[Bridge] 启动播放器失败:', err);
+                }
+            });
+        }
+    };
+
+    // =========================================================================
     // 挂载 window.Android 与 window.AndroidJS 接口
     // =========================================================================
     window.AndroidJS = {
@@ -229,9 +302,7 @@
                 }
             }
         },
-        openPlayer: function (link, data) {
-            if (window.cordova && cordova.InAppBrowser) cordova.InAppBrowser.open(link, '_system');
-        },
+        openPlayer: nativePlayerEngine.openPlayer,
         openTorrentLink: function (urlOrMagnet, jsonString) {
             var jsonData = {};
             try { jsonData = JSON.parse(jsonString || '{}'); } catch (e) {}
@@ -275,44 +346,7 @@
     // 兼容可能存在的直接 Android.httpReq 调用
     window.Android = {
         exit: window.AndroidJS.exit,
-        openPlayer: function (url, data) {
-            data = data || {};
-            var pos = parseInt((data.timeline ? data.timeline.time || -1 : -1) * 1000);
-            var intentExtra = {
-                title: data.title || data.path || '',
-                position: pos,
-                return_result: true,
-                forcedirect: true,
-                forceresume: true
-            };
-            var intentConfig = {
-                action: window.plugins.intentShim.ACTION_VIEW,
-                url: data.url || url,
-                position: pos,
-                type: "video/*",
-                extras: intentExtra
-            };
-            var chosenPlayer = localStorage.getItem('lampa_default_player') || '';
-            if (chosenPlayer) intentConfig.package = chosenPlayer;
-
-            window.plugins.intentShim.startActivityForResult(intentConfig, function (itent) {
-                var extras = itent.extras || {};
-                var time = (extras.position || extras.extra_position) / 1000;
-                var duration = (extras.duration || extras.extra_duration) / 1000;
-                var percent = duration > 0 ? parseInt(time * 100 / duration) : 100;
-                if (time && data.timeline) {
-                    data.timeline.time = time;
-                    data.timeline.duration = duration;
-                    data.timeline.percent = percent;
-                    if (window.Lampa && Lampa.Timeline) Lampa.Timeline.update(data.timeline);
-                }
-            }, function () {
-                if (intentConfig.package) {
-                    delete intentConfig.package;
-                    window.plugins.intentShim.startActivityForResult(intentConfig, function () {}, function () {});
-                }
-            });
-        }
+        openPlayer: nativePlayerEngine.openPlayer
     };
 
     // 默认配置
