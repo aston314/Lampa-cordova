@@ -290,12 +290,12 @@
                             }
 
                             // D. 核心补齐 4: 如果当前正停留在详情页，通知当前 Activity 重新绘制标记
-                            if (window.Lampa && Lampa.Activity && Lampa.Activity.active) {
-                                var activeComp = Lampa.Activity.active().component;
-                                if (activeComp && typeof activeComp.update === 'function') {
-                                    try { activeComp.update(); } catch (e) { }
-                                }
-                            }
+                            // if (window.Lampa && Lampa.Activity && Lampa.Activity.active) {
+                            //     var activeComp = Lampa.Activity.active().component;
+                            //     if (activeComp && typeof activeComp.update === 'function') {
+                            //         try { activeComp.update(); } catch (e) { }
+                            //     }
+                            // }
                         }, 50);
                     }
                 }, function (err) {
