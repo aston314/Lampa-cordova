@@ -252,31 +252,51 @@
                 window.plugins.intentShim.startActivityForResult(config, function (itent) {
                     var extras = (itent && itent.extras) ? itent.extras : {};
 
-                    // 读取播放器返回的进度（毫秒 -> 秒）
+                    // 1. 获取毫秒并换算为秒
                     var returnPos = extras.position || extras.extra_position || 0;
                     var returnDur = extras.duration || extras.extra_duration || 0;
 
                     var time = returnPos > 0 ? (returnPos / 1000) : 0;
                     var duration = returnDur > 0 ? (returnDur / 1000) : 0;
-                    var percent = duration > 0 ? parseInt(time * 100 / duration) : 100;
+                    var percent = duration > 0 ? parseInt((time * 100) / duration) : 100;
 
-                    // 核心：精准回写各种层级的进度对象与回调
-                    if (time && playData.timeline) {
-                        playData.timeline.time = time;
-                        playData.timeline.duration = duration;
-                        playData.timeline.percent = percent;
+                    // 播放时间为 0 且未播完时，不处理异常更新
+                    if (time > 0 || percent === 100) {
+                        var tl = playData.timeline || {};
 
-                        // 触发页面插件自身的私有进度回调（如果有）
-                        if (typeof playData.timeline.handler === 'function') {
-                            playData.timeline.handler(percent, time, duration);
-                        }
+                        // 核心补齐 1: 确保 hash 存在（没有 hash，DOM 元素无法匹配刷新）
+                        tl.hash = tl.hash || playData.hash || (playData.movie ? playData.movie.id : '') || '';
+                        tl.time = time;
+                        tl.duration = duration;
+                        tl.percent = percent;
 
-                        // 触发全局 Timeline 更新
-                        if (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.update === 'function') {
-                            Lampa.Timeline.update(playData.timeline);
-                        } else if (typeof Timeline !== 'undefined' && typeof Timeline.update === 'function') {
-                            Timeline.update(playData.timeline);
-                        }
+                        // 核心补齐 2: 延时一帧执行，确保 WebView 恢复前台后再触发 DOM 变更
+                        setTimeout(function () {
+                            // A. 触发插件自身的单集刷新钩子（通常用于选集打钩和条状进度）
+                            if (typeof tl.handler === 'function') {
+                                try { tl.handler(percent, time, duration); } catch (e) { }
+                            }
+
+                            // B. 触发 Lampa 核心 Timeline 更新
+                            if (window.Lampa && Lampa.Timeline && typeof Lampa.Timeline.update === 'function') {
+                                Lampa.Timeline.update(tl);
+                            } else if (typeof Timeline !== 'undefined' && typeof Timeline.update === 'function') {
+                                Timeline.update(tl);
+                            }
+
+                            // C. 核心补齐 3: 触发 Lampa 全局事件总线，通知当前页面各组件重绘
+                            if (window.Lampa && Lampa.Listener) {
+                                Lampa.Listener.send('timeline', { type: 'update', data: tl });
+                            }
+
+                            // D. 核心补齐 4: 如果当前正停留在详情页，通知当前 Activity 重新绘制标记
+                            if (window.Lampa && Lampa.Activity && Lampa.Activity.active) {
+                                var activeComp = Lampa.Activity.active().component;
+                                if (activeComp && typeof activeComp.update === 'function') {
+                                    try { activeComp.update(); } catch (e) { }
+                                }
+                            }
+                        }, 50);
                     }
                 }, function (err) {
                     // 安全降级：万一指定的播放器被卸载了，自动移除包名回退到系统每次询问！
