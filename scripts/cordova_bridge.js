@@ -1,6 +1,5 @@
 /**
  * Lampa Cordova Bridge (完全模拟 AndroidJS 原生状态机)
- * 1:1 模拟官方 top.rootu.lampa.AndroidJS 原生协议
  */
 (function () {
     'use strict';
