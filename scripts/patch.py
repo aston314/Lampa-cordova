@@ -199,9 +199,9 @@ if os.path.exists(lang_dir):
                 if clean_obj.endswith(";"):
                     clean_obj = clean_obj[:-1]
                 all_embedded_langs[lang_code] = clean_obj
-                print(f"[Success] 解析语言包: {filename} -> 代码: {lang_code}")
+                print(f"✅ [Success] 解析语言包: {filename} -> 代码: {lang_code}")
             except Exception as e:
-                print(f"[Warning] 解析语言包 {filename} 失败: {e}")
+                print(f"⚠️ [Warning] 解析语言包 {filename} 失败: {e}")
 
 lang_entries = [f'"{code}": {obj_str}' for code, obj_str in all_embedded_langs.items()]
 embedded_langs_js = "{\n" + ",\n".join(lang_entries) + "\n}"
