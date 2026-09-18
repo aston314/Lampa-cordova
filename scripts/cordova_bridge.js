@@ -36,12 +36,12 @@
     // };
 
     // 0. 证书信任
-    if (!window._cordova_certs_accepted && window.cordovaHTTP) {
-        try {
-            cordovaHTTP.acceptAllCerts(true, function () {}, function () {});
-            window._cordova_certs_accepted = true;
-        } catch (e) {}
-    }
+    // if (!window._cordova_certs_accepted && window.cordovaHTTP) {
+    //     try {
+    //         cordovaHTTP.acceptAllCerts(true, function () {}, function () {});
+    //         window._cordova_certs_accepted = true;
+    //     } catch (e) {}
+    // }
 
     // 存储请求响应的字典 (对应 Kotlin 里的 reqResponse: MutableMap<String, String>)
     var reqResponse = {};
@@ -49,7 +49,7 @@
     // =========================================================================
     // 核心契约模拟：AndroidJS.httpReq + AndroidJS.getResp
     // =========================================================================
-    var nativeHttpEngine = {
+    var nativeHttpEngine_old = {
         /**
          * 对应 Kotlin: fun httpReq(str: String, returnI: Int)
          */
@@ -167,6 +167,181 @@
             if (reqResponse.hasOwnProperty(key)) {
                 string = reqResponse[key];
                 delete reqResponse[key]; // 取完即焚，和 Kotlin 完全一致！
+            }
+            return string;
+        }
+    };
+
+    // =========================================================================
+    // 核心契约模拟：AndroidJS.httpReq + AndroidJS.getResp (修复版)
+    // =========================================================================
+    var nativeHttpEngine = {
+        httpReq: function (str, returnI) {
+            // 修复点 1：每次发请求前动态检查证书信任，确保在 Cordova 就绪后必定生效
+            if (!window._cordova_certs_accepted && window.cordovaHTTP) {
+                try {
+                    cordovaHTTP.acceptAllCerts(true, function () {}, function () {});
+                    window._cordova_certs_accepted = true;
+                } catch (e) {}
+            }
+
+            var params;
+            try {
+                params = typeof str === 'string' ? JSON.parse(str) : str;
+            } catch (e) {
+                console.error('[Bridge] 解析 httpReq JSON 失败:', str);
+                return;
+            }
+
+            var url = params.url;
+            var data = params.post_data;
+            var headers = params.headers || {};
+            var returnHeaders = params.returnHeaders || false;
+            var dataType = params.dataType || 'json';
+            var contentType = params.contentType || '';
+            var method = (params.type || (data ? 'POST' : 'GET')).toUpperCase();
+
+            // 成功后通知 Lampa
+            function finalizeSuccess(bodyStr, allHeaders) {
+                if (returnHeaders) {
+                    reqResponse[returnI.toString()] = JSON.stringify({
+                        body: bodyStr,
+                        headers: allHeaders || {}
+                    });
+                } else {
+                    reqResponse[returnI.toString()] = typeof bodyStr === 'string' ? bodyStr : JSON.stringify(bodyStr);
+                }
+
+                if (window.Lampa && window.Lampa.Android && window.Lampa.Android.httpCall) {
+                    window.Lampa.Android.httpCall(returnI, 'complite');
+                }
+            }
+
+            // 失败通知
+            function finalizeError(status, message) {
+                reqResponse[returnI.toString()] = JSON.stringify({
+                    status: status || 0,
+                    message: message || "request error"
+                });
+                if (window.Lampa && window.Lampa.Android && window.Lampa.Android.httpCall) {
+                    window.Lampa.Android.httpCall(returnI, 'error');
+                }
+            }
+
+            // 修复点 2：1:1 还原老代码对 POST Body 和 Content-Type 的判断
+            var isJsonString = false;
+            var requestContent = "";
+
+            if (data) {
+                if (typeof data === "string") {
+                    requestContent = data;
+                    try {
+                        JSON.parse(requestContent);
+                        isJsonString = true;
+                        contentType = contentType || "application/json";
+                    } catch (e) {
+                        contentType = contentType || "application/x-www-form-urlencoded";
+                    }
+                } else if (typeof data === "object") {
+                    contentType = "application/json";
+                    requestContent = JSON.stringify(data);
+                    isJsonString = true;
+                }
+            }
+
+            if (requestContent !== "") {
+                var hasContentType = false;
+                for (var k in headers) {
+                    if (k.toLowerCase() === 'content-type') {
+                        hasContentType = true;
+                        break;
+                    }
+                }
+                if (!hasContentType) {
+                    headers["Content-Type"] = contentType;
+                }
+            }
+
+            // 统一的 Fetch 引擎（走 Chromium 内核网络栈，用于绕过证书与 WAF）
+            function executeFetch() {
+                var fetchRunner = window.cordovaFetch || window.fetch;
+                if (!fetchRunner) {
+                    finalizeError(0, 'No Native HTTP or Fetch Available');
+                    return;
+                }
+
+                var fetchOptions = {
+                    method: method,
+                    headers: headers
+                };
+                if (requestContent && method !== 'GET') {
+                    fetchOptions.body = requestContent;
+                }
+
+                fetchRunner(url, fetchOptions)
+                    .then(function (res) {
+                        return res.text().then(function (txt) {
+                            if (res.status >= 200 && res.status < 400) {
+                                finalizeSuccess(txt, {});
+                            } else {
+                                finalizeError(res.status, res.statusText);
+                            }
+                        });
+                    })
+                    .catch(function (err) {
+                        finalizeError(0, err.message);
+                    });
+            }
+
+            // 修复点 3：双引擎自动降级分流
+            if (method === 'GET') {
+                if (window.cordovaHTTP) {
+                    cordovaHTTP.get(url, {}, headers, function (res) {
+                        finalizeSuccess(res.data, res.headers);
+                    }, function (err) {
+                        // 核心保护：如果 cordovaHTTP 遇到 SSL 异常（返回 500）或被拦截，自动换 Fetch 重试！
+                        console.warn('[Bridge] cordovaHTTP.get 失败(可能为 SSL/WAF 500)，正在自动降级使用 Fetch 重试...', err);
+                        executeFetch();
+                    });
+                } else {
+                    executeFetch();
+                }
+                return;
+            }
+
+            if (method === 'POST') {
+                // 如果是标准 JSON 字符串，优先走 Fetch（避免 cordovaHTTP 对 JSON 序列化不合规）
+                if (isJsonString) {
+                    executeFetch();
+                } else {
+                    if (window.cordovaHTTP) {
+                        var formObj = {};
+                        requestContent.split('&').forEach(function (pair) {
+                            var parts = pair.split('=');
+                            if (parts[0]) {
+                                formObj[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1] || '');
+                            }
+                        });
+
+                        cordovaHTTP.post(url, formObj, headers, function (res) {
+                            finalizeSuccess(res.data, res.headers);
+                        }, function (err) {
+                            console.warn('[Bridge] cordovaHTTP.post 失败，正在降级使用 Fetch 重试...', err);
+                            executeFetch();
+                        });
+                    } else {
+                        executeFetch();
+                    }
+                }
+            }
+        },
+
+        getResp: function (str) {
+            var string = "";
+            var key = str.toString();
+            if (reqResponse.hasOwnProperty(key)) {
+                string = reqResponse[key];
+                delete reqResponse[key];
             }
             return string;
         }
