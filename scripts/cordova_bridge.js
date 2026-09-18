@@ -465,6 +465,11 @@
     // 默认配置
     try {
         if (!localStorage.getItem('lampa_cordova_initiale')) {
+            // if (Lampa.Storage.get('language') == 'ru' || Lampa.Storage.get('language') == 'zh') {
+        	   // var pluginsArray = Lampa.Storage.get('plugins','[]')
+        	   // pluginsArray.push({"author": "@bylampa","url": "https://bylampa.github.io/tmdb-proxy.js","name":"TMDB Proxy","status": 1});
+            //    Lampa.Storage.set('plugins', pluginsArray);
+            // };
             localStorage.setItem('lampa_cordova_initiale', 'true');
             localStorage.setItem('screensaver', 'false');
             localStorage.setItem('device_name', 'Lampa Cordova');
