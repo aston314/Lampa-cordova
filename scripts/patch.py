@@ -100,6 +100,8 @@ DEFAULT_PLUGINS_JSON_STR = json.dumps(default_plugins_list, ensure_ascii=False)
 # ================= 2. 同步 scripts/cordova_bridge.js 到待打包源码目录 =================
 BRIDGE_SRC = os.path.join("scripts", "cordova_bridge.js")
 BRIDGE_DST = os.path.join(UPSTREAM_DIR, "cordova_bridge.js")
+PERSONAL_SRC = "personal.lampa"
+PERSONAL_DST = os.path.join(UPSTREAM_DIR, "personal.lampa")
 
 if os.path.exists(BRIDGE_SRC):
     shutil.copyfile(BRIDGE_SRC, BRIDGE_DST)
@@ -107,6 +109,14 @@ if os.path.exists(BRIDGE_SRC):
 else:
     print(f"[FATAL ERROR] 找不到桥接文件: {BRIDGE_SRC}，打包终止！")
     send_ntfy_alert(["找不到 scripts/cordova_bridge.js 文件"], is_fatal=True)
+    sys.exit(1)
+
+if os.path.isfile(PERSONAL_SRC):
+    shutil.copyfile(PERSONAL_SRC, PERSONAL_DST)
+    print(f"[Success] 成功同步 Lampa Personal 标记: {PERSONAL_SRC} -> {PERSONAL_DST}")
+else:
+    print(f"[FATAL ERROR] 找不到 Personal 标记文件: {PERSONAL_SRC}，打包终止！")
+    send_ntfy_alert(["找不到 personal.lampa 文件"], is_fatal=True)
     sys.exit(1)
 
 
