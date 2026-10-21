@@ -153,6 +153,7 @@ jobs:
           cordova plugin add cordova-plugin-inappbrowser@5.0.0
           cordova plugin add cordova-plugin-statusbar@3.0.0
           cordova plugin add cordova-plugin-androidx-adapter || true
+          cordova plugin add cordova-plugin-file-opener2
 
           cordova platform add android@10.1.2
 
