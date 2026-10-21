@@ -550,6 +550,50 @@
     }
 
     function writeNewApk(dirEntry, blob, fallbackUrl, stopAndReset) {
+        var APK = 'application/vnd.android.package-archive';
+    
+        function fail(reason) {
+            stopAndReset();
+            if (window.Lampa && Lampa.Bell) {
+                Lampa.Bell.push({ text: '安装失败: ' + reason, type: 'error', time: 8000 });
+            }
+        }
+    
+        function viaIntentShim(url) {
+            if (!(window.plugins && window.plugins.intentShim)) return fail('no installer plugin');
+            window.plugins.intentShim.startActivity({
+                action: 'android.intent.action.VIEW',
+                url: url,
+                type: APK,
+                flags: [268435456, 1]
+            }, function () {
+                stopAndReset();
+            }, function (err) {
+                fail(JSON.stringify(err));
+            });
+        }
+    
+        dirEntry.getFile('update.apk', { create: true }, function (fileEntry) {
+            fileEntry.createWriter(function (fileWriter) {
+                fileWriter.onwriteend = function () {
+                    var url = fileEntry.nativeURL || fileEntry.toURL();
+    
+                    if (window.cordova && cordova.plugins && cordova.plugins.fileOpener2) {
+                        cordova.plugins.fileOpener2.open(url, APK, {
+                            success: function () { stopAndReset(); },
+                            error: function () { viaIntentShim(url); }
+                        });
+                    } else {
+                        viaIntentShim(url);
+                    }
+                };
+                fileWriter.onerror = function (e) { fail('write ' + (e && e.code)); };
+                fileWriter.write(blob);
+            }, function (e) { fail('writer ' + (e && e.code)); });
+        }, function (e) { fail('getFile ' + (e && e.code)); });
+    }
+
+    function writeNewApk_1(dirEntry, blob, fallbackUrl, stopAndReset) {
         dirEntry.getFile('update.apk', { create: true, overwrite: true }, function (fileEntry) {
             fileEntry.createWriter(function (fileWriter) {
                 fileWriter.onwriteend = function () {
