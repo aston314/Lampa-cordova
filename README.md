@@ -4,10 +4,10 @@
 
 <!-- LATEST_BUILD_INFO_START -->
 ### 🚀 Latest Automated Build
-- **App Version**: `v3.3.3.166`
-- **Build Date**: `2026-11-07 17:14 (UTC+8)`
-- **Upstream Source**: [6fcdfab](https://github.com/yumata/lampa/commit/6fcdfab624f98ac0f7a91244e3d3b637f104a8c2)
-- **Direct Download**: [📦 lampa-v3.3.3.166.apk](https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.166/lampa-v3.3.3.166.apk)
+- **App Version**: `v3.3.3.169`
+- **Build Date**: `2026-11-10 18:22 (UTC+8)`
+- **Upstream Source**: [e5bfba5](https://github.com/yumata/lampa/commit/e5bfba5ca52f3b46d037e85d8a2b0ffa522e4d3f)
+- **Direct Download**: [📦 lampa-v3.3.3.169.apk](https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.169/lampa-v3.3.3.169.apk)
 <!-- LATEST_BUILD_INFO_END -->
 
 <!-- RELATED_RELEASES_START -->
