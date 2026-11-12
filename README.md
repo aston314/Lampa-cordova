@@ -4,20 +4,20 @@
 
 <!-- LATEST_BUILD_INFO_START -->
 ### 🚀 Latest Automated Build
-- **App Version**: `v3.3.3.170`
-- **Build Date**: `2026-11-11 17:51 (UTC+8)`
-- **Upstream Source**: [a0aa914](https://github.com/yumata/lampa/commit/a0aa9140d350612b9ad80c5a771c681f04ac4602)
-- **Direct Download**: [📦 lampa-v3.3.3.170.apk](https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.170/lampa-v3.3.3.170.apk)
+- **App Version**: `v3.3.3.171`
+- **Build Date**: `2026-11-12 18:17 (UTC+8)`
+- **Upstream Source**: [3171201](https://github.com/yumata/lampa/commit/3171201b10a38816378212756b963428836dbf13)
+- **Direct Download**: [📦 lampa-v3.3.3.171.apk](https://github.com/aston314/Lampa-cordova/releases/download/v3.3.3.171/lampa-v3.3.3.171.apk)
 <!-- LATEST_BUILD_INFO_END -->
 
 <!-- RELATED_RELEASES_START -->
 ### 🌐 Related Lampa Community Builds
 
 #### 📦 [lampa-app/LAMPA](https://github.com/lampa-app/LAMPA)
-- **App Version**: `v1.13.5` (v1.13.5)
-- **Release Date**: `2026-10-13 00:43 (UTC+8)`
-- **Release Notes**: [View Details](https://github.com/lampa-app/LAMPA/releases/tag/v1.13.5)
-- **Direct Download**: [📦 app-lite-release.apk](https://github.com/lampa-app/LAMPA/releases/download/v1.13.5/app-lite-release.apk)
+- **App Version**: `v1.13.6` (v1.13.6)
+- **Release Date**: `2026-11-12 01:35 (UTC+8)`
+- **Release Notes**: [View Details](https://github.com/lampa-app/LAMPA/releases/tag/v1.13.6)
+- **Direct Download**: [📦 app-lite-release.apk](https://github.com/lampa-app/LAMPA/releases/download/v1.13.6/app-lite-release.apk)
 <!-- RELATED_RELEASES_END -->
 
 ---
